@@ -7,11 +7,14 @@
   "private": true,
   "dependencies": {
     "@remotion/cli": "4.0.410",
+    "@remotion/google-fonts": "4.0.410",
+    "@remotion/tailwind-v4": "4.0.410",
+    "@remotion/transitions": "4.0.410",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "remotion": "4.0.410",
-    "@remotion/tailwind-v4": "4.0.410",
-    "tailwindcss": "4.0.0"
+    "tailwindcss": "4.0.0",
+    "zod": "3.22.3"
   },
   "devDependencies": {
     "@remotion/eslint-config-flat": "4.0.410",
@@ -25,7 +28,8 @@
     "dev": "remotionb studio",
     "build": "remotionb bundle",
     "upgrade": "remotionb upgrade",
-    "lint": "eslint src && tsc"
+    "lint": "eslint src && tsc",
+    "render:weekly": "bun scripts/render-weekly.ts"
   },
   "sideEffects": [
     "*.css"
