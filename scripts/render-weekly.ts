@@ -24,7 +24,22 @@ interface Artist {
   stage_name: string;
   bio: string | null;
   genre: string | null;
+  website: string | null;
+  social_media: string | null; // JSON string: {"instagram":"...", "tiktok":"..."}
   profile_image_url: string | null;
+}
+
+function parseInstagram(artist: Artist): string | null {
+  if (!artist.social_media) return null;
+  try {
+    const parsed =
+      typeof artist.social_media === "string"
+        ? JSON.parse(artist.social_media)
+        : artist.social_media;
+    return parsed?.instagram || null;
+  } catch {
+    return null;
+  }
 }
 
 interface Reservation {
@@ -51,20 +66,6 @@ function extractBearerToken(input: string): string | null {
 }
 
 // --- Date helpers ---
-function getWeekBounds(now: Date): { start: Date; end: Date } {
-  const day = now.getDay();
-  const diffToMonday = day === 0 ? -6 : 1 - day;
-  const monday = new Date(now);
-  monday.setDate(now.getDate() + diffToMonday);
-  monday.setHours(0, 0, 0, 0);
-
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-  sunday.setHours(23, 59, 59, 999);
-
-  return { start: monday, end: sunday };
-}
-
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
   const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -129,58 +130,79 @@ async function main() {
 
   // Fetch reservations
   console.log("Fetching reservations...");
-  const reservations = await fetchReservations(token);
-  console.log(`Found ${reservations.length} total reservations.`);
+  const allReservations = await fetchReservations(token);
+  const reservations = allReservations.filter((r) => r.status === "approved");
+  console.log(`Found ${allReservations.length} total, ${reservations.length} approved.`);
 
-  // Filter to this week
-  const now = new Date();
-  const { start, end } = getWeekBounds(now);
-  console.log(`This week: ${start.toDateString()} - ${end.toDateString()}\n`);
+  // Next 5 upcoming events (including today)
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
-  const thisWeek = reservations.filter((r) => {
-    const d = new Date(r.start_time);
-    return d >= start && d <= end;
-  });
+  const upcoming = reservations
+    .filter((r) => new Date(r.start_time) >= today)
+    .sort(
+      (a, b) =>
+        new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+    )
+    .slice(0, 5);
 
-  if (thisWeek.length === 0) {
-    console.log("No reservations this week. Trying next week...");
-    const nextStart = new Date(start);
-    nextStart.setDate(nextStart.getDate() + 7);
-    const nextEnd = new Date(end);
-    nextEnd.setDate(nextEnd.getDate() + 7);
-
-    const nextWeek = reservations.filter((r) => {
-      const d = new Date(r.start_time);
-      return d >= nextStart && d <= nextEnd;
-    });
-
-    if (nextWeek.length === 0) {
-      // Fallback: just use the next N upcoming events
-      console.log("No events next week either. Using next 5 upcoming events.");
-      const upcoming = reservations
-        .filter((r) => new Date(r.start_time) >= now)
-        .sort(
-          (a, b) =>
-            new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
-        )
-        .slice(0, 5);
-
-      if (upcoming.length === 0) {
-        console.error("No upcoming events found at all.");
-        process.exit(1);
-      }
-
-      return renderEvents(upcoming, "COMING UP", "Upcoming Events");
-    }
-
-    return renderEvents(
-      nextWeek,
-      "NEXT WEEK",
-      formatDateRange(nextStart, nextEnd)
-    );
+  if (upcoming.length === 0) {
+    console.error("No upcoming events found.");
+    process.exit(1);
   }
 
-  return renderEvents(thisWeek, "THIS WEEK", formatDateRange(start, end));
+  // Interactive selection
+  console.log("\nUpcoming events (toggle with number, Enter to confirm):\n");
+  const selected = new Set<number>(
+    upcoming.map((_, i) => i) // all selected by default
+  );
+
+  const printMenu = () => {
+    for (let i = 0; i < upcoming.length; i++) {
+      const r = upcoming[i];
+      const check = selected.has(i) ? "[x]" : "[ ]";
+      const artistNames = r.artists.map((a) => a.stage_name).join(", ");
+      const label = `${formatDate(r.start_time)} ${formatTime(r.start_time)} - ${r.purpose || "Event"}${artistNames ? ` (${artistNames})` : ""}`;
+      console.log(`  ${i + 1}) ${check} ${label}`);
+    }
+    console.log("\nType numbers to toggle (e.g. 1 3), then Enter to render:");
+  };
+
+  printMenu();
+
+  while (true) {
+    const line = (await readLine()).trim();
+    if (line === "") {
+      // Confirm selection
+      break;
+    }
+
+    // Parse space-separated numbers
+    const nums = line.split(/[\s,]+/).map(Number);
+    for (const n of nums) {
+      if (n >= 1 && n <= upcoming.length) {
+        if (selected.has(n - 1)) {
+          selected.delete(n - 1);
+        } else {
+          selected.add(n - 1);
+        }
+      }
+    }
+
+    // Reprint
+    console.log("");
+    printMenu();
+  }
+
+  const chosen = upcoming.filter((_, i) => selected.has(i));
+  if (chosen.length === 0) {
+    console.error("No events selected.");
+    process.exit(1);
+  }
+
+  const firstDate = new Date(chosen[0].start_time);
+  const lastDate = new Date(chosen[chosen.length - 1].start_time);
+  return renderEvents(chosen, "COMING UP", formatDateRange(firstDate, lastDate));
 }
 
 async function renderEvents(
@@ -207,6 +229,8 @@ async function renderEvents(
     artistName: string;
     artistImage: string | null;
     genre: string | null;
+    instagram: string | null;
+    website: string | null;
     eventDate: string;
     eventTime: string;
     purpose: string;
@@ -219,13 +243,14 @@ async function renderEvents(
           artistName: artist.stage_name,
           artistImage: artist.profile_image_url,
           genre: artist.genre || artist.bio,
+          instagram: parseInstagram(artist),
+          website: artist.website,
           eventDate: formatDate(event.start_time),
           eventTime: formatTime(event.start_time),
           purpose: event.purpose || "Live",
         });
       }
     } else {
-      // Use the event purpose as the "artist" name
       const name =
         event.purpose?.replace(/^(Radio|Reserved|Private):\s*/i, "") ||
         "Event";
@@ -233,6 +258,8 @@ async function renderEvents(
         artistName: name,
         artistImage: null,
         genre: null,
+        instagram: null,
+        website: null,
         eventDate: formatDate(event.start_time),
         eventTime: formatTime(event.start_time),
         purpose: event.purpose || "Event",
@@ -271,31 +298,28 @@ async function renderEvents(
     "WeeklyLineup",
     outPath,
     `--props=${propsPath}`,
-    `--frames=0-${duration - 1}`,
   ].join(" ");
 
   console.log(`\n$ ${cmd}\n`);
-  execSync(cmd, { stdio: "inherit", cwd: process.cwd() });
+  execSync(cmd, { stdio: ["ignore", "inherit", "inherit"], cwd: process.cwd() });
   console.log(`\nDone! Output: ${outPath}`);
 }
 
 function readLine(): Promise<string> {
   return new Promise((resolve) => {
+    let buf = "";
     const stdin = process.stdin;
-    const chunks: Buffer[] = [];
-
     stdin.setEncoding("utf-8");
     stdin.resume();
 
-    const onData = (chunk: Buffer) => {
-      const str = chunk.toString();
-      if (str.includes("\n")) {
-        chunks.push(Buffer.from(str.split("\n")[0]));
+    const onData = (chunk: string) => {
+      buf += chunk;
+      const newlineIdx = buf.indexOf("\n");
+      if (newlineIdx !== -1) {
+        const line = buf.slice(0, newlineIdx);
         stdin.removeListener("data", onData);
         stdin.pause();
-        resolve(Buffer.concat(chunks).toString().trim());
-      } else {
-        chunks.push(chunk);
+        resolve(line.trim());
       }
     };
 

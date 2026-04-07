@@ -1,18 +1,24 @@
+import React from "react";
 import { z } from "zod";
 import {
   AbsoluteFill,
   Img,
   interpolate,
   spring,
+  staticFile,
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
 import { TransitionSeries, linearTiming } from "@remotion/transitions";
 import { slide } from "@remotion/transitions/slide";
 import { fade } from "@remotion/transitions/fade";
-import { loadFont } from "@remotion/google-fonts/SpaceGrotesk";
+import { loadFont as loadJersey } from "@remotion/google-fonts/Jersey10";
+import { loadFont as loadGrotesk } from "@remotion/google-fonts/SpaceGrotesk";
 
-const { fontFamily } = loadFont("normal", {
+// Jersey 10 - brand font (pixel/blocky style matching waterhousestudios.nl)
+const { fontFamily: brandFont } = loadJersey();
+// Space Grotesk - readable body font for details
+const { fontFamily: bodyFont } = loadGrotesk("normal", {
   weights: ["400", "700"],
   subsets: ["latin"],
 });
@@ -21,6 +27,8 @@ const ArtistEventSchema = z.object({
   artistName: z.string(),
   artistImage: z.string().nullable(),
   genre: z.string().nullable(),
+  instagram: z.string().nullable(),
+  website: z.string().nullable(),
   eventDate: z.string(),
   eventTime: z.string(),
   purpose: z.string(),
@@ -34,18 +42,79 @@ export const WeeklyLineupSchema = z.object({
 
 export type WeeklyLineupProps = z.infer<typeof WeeklyLineupSchema>;
 
-const ARTIST_DURATION = 4 * 30; // 4 seconds at 30fps
-const INTRO_DURATION = 3 * 30; // 3 seconds
-const OUTRO_DURATION = 2.5 * 30; // 2.5 seconds
-const TRANSITION_DURATION = 12; // frames
+const ARTIST_DURATION = 4 * 30;
+const INTRO_DURATION = 3 * 30;
+const OUTRO_DURATION = 2.5 * 30;
+const TRANSITION_DURATION = 12;
 
 export function getCompositionDuration(artistCount: number): number {
   const count = Math.max(artistCount, 1);
   const totalSequenceDuration =
     INTRO_DURATION + count * ARTIST_DURATION + OUTRO_DURATION;
-  const totalTransitions = count + 1; // intro->artists, between artists, artists->outro
+  const totalTransitions = count + 1;
   return totalSequenceDuration - totalTransitions * TRANSITION_DURATION;
 }
+
+// --- Logo Component ---
+const WaterhouseLogo: React.FC<{
+  scale?: number;
+  opacity?: number;
+}> = ({ scale = 1, opacity = 1 }) => {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        opacity,
+        transform: `scale(${scale})`,
+      }}
+    >
+      <Img
+        src={staticFile("logo.svg")}
+        style={{
+          width: 120,
+          height: 80,
+          filter: "invert(1)",
+          marginBottom: 20,
+        }}
+      />
+      <div
+        style={{
+          fontFamily: brandFont,
+          color: "#9146FF",
+          fontSize: 48,
+          lineHeight: 1,
+          textAlign: "center",
+        }}
+      >
+        TWITCH.TV/
+      </div>
+      <div
+        style={{
+          fontFamily: brandFont,
+          color: "#ffffff",
+          fontSize: 72,
+          lineHeight: 1,
+          textAlign: "center",
+        }}
+      >
+        WATERHOUSE
+      </div>
+      <div
+        style={{
+          fontFamily: brandFont,
+          fontSize: 72,
+          lineHeight: 1,
+          textAlign: "center",
+        }}
+      >
+        <span style={{ color: "#ffffff" }}>STUDIOS</span>
+        {/* <span style={{ color: "#888888" }}>.NL</span> */}
+      </div>
+    </div>
+  );
+};
 
 // --- Intro Card ---
 const IntroCard: React.FC<{ weekLabel: string; dateRange: string }> = ({
@@ -55,23 +124,29 @@ const IntroCard: React.FC<{ weekLabel: string; dateRange: string }> = ({
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  const titleSpring = spring({ frame, fps, config: { damping: 200 } });
+  const logoSpring = spring({ frame, fps, config: { damping: 200 } });
+  const weekSpring = spring({
+    frame,
+    fps,
+    config: { damping: 15, stiffness: 80 },
+    delay: 12,
+  });
   const dateSpring = spring({
     frame,
     fps,
     config: { damping: 200 },
-    delay: 8,
+    delay: 20,
   });
 
-  const lineWidth = interpolate(frame, [0, 1.5 * fps], [0, 600], {
+  const lineWidth = interpolate(frame, [12, 2 * fps], [0, 500], {
+    extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
 
   return (
     <AbsoluteFill
       style={{
-        background: "linear-gradient(160deg, #0a0a0a 0%, #1a1a2e 100%)",
-        fontFamily,
+        background: "#000000",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
@@ -79,40 +154,30 @@ const IntroCard: React.FC<{ weekLabel: string; dateRange: string }> = ({
         padding: 80,
       }}
     >
-      <div
-        style={{
-          color: "#e0e0e0",
-          fontSize: 32,
-          letterSpacing: 12,
-          textTransform: "uppercase",
-          opacity: interpolate(titleSpring, [0, 1], [0, 0.7]),
-          transform: `translateY(${interpolate(titleSpring, [0, 1], [20, 0])}px)`,
-          marginBottom: 24,
-        }}
-      >
-        WATERHOUSE STUDIOS
-      </div>
+      <WaterhouseLogo
+        scale={interpolate(logoSpring, [0, 1], [0.85, 1])}
+        opacity={logoSpring}
+      />
 
       <div
         style={{
           width: lineWidth,
-          height: 2,
-          background:
-            "linear-gradient(90deg, transparent, #ff6b35, transparent)",
-          marginBottom: 40,
+          height: 3,
+          background: "#ffffff",
+          marginTop: 48,
+          marginBottom: 48,
         }}
       />
 
       <div
         style={{
+          fontFamily: brandFont,
           color: "#ffffff",
-          fontSize: 96,
-          fontWeight: 700,
-          letterSpacing: -2,
+          fontSize: 120,
           textAlign: "center",
-          lineHeight: 1.1,
-          opacity: titleSpring,
-          transform: `translateY(${interpolate(titleSpring, [0, 1], [40, 0])}px)`,
+          lineHeight: 1,
+          opacity: weekSpring,
+          transform: `translateY(${interpolate(weekSpring, [0, 1], [30, 0])}px)`,
         }}
       >
         {weekLabel}
@@ -120,12 +185,13 @@ const IntroCard: React.FC<{ weekLabel: string; dateRange: string }> = ({
 
       <div
         style={{
-          color: "#ff6b35",
+          fontFamily: bodyFont,
+          color: "#888888",
           fontSize: 44,
-          fontWeight: 700,
-          marginTop: 32,
+          fontWeight: 400,
+          marginTop: 20,
           opacity: dateSpring,
-          transform: `translateY(${interpolate(dateSpring, [0, 1], [30, 0])}px)`,
+          transform: `translateY(${interpolate(dateSpring, [0, 1], [20, 0])}px)`,
         }}
       >
         {dateRange}
@@ -139,11 +205,23 @@ const ArtistCard: React.FC<{
   artistName: string;
   artistImage: string | null;
   genre: string | null;
+  instagram: string | null;
+  website: string | null;
   eventDate: string;
   eventTime: string;
   purpose: string;
   index: number;
-}> = ({ artistName, artistImage, genre, eventDate, eventTime, purpose, index }) => {
+}> = ({
+  artistName,
+  artistImage,
+  genre,
+  instagram,
+  website,
+  eventDate,
+  eventTime,
+  purpose,
+  index,
+}) => {
   const frame = useCurrentFrame();
   const { fps, durationInFrames } = useVideoConfig();
 
@@ -161,22 +239,16 @@ const ArtistCard: React.FC<{
     delay: 14,
   });
 
-  // Subtle zoom on the image
   const imageScale = interpolate(frame, [0, durationInFrames], [1.05, 1.15], {
     extrapolateRight: "clamp",
   });
 
-  // Accent colors that rotate per artist
-  const accents = ["#ff6b35", "#00d4aa", "#7c5cfc", "#ff3d7f", "#ffd93d"];
+  // Monochrome accent rotation - keeps brand feel
+  const accents = ["#ffffff", "#cccccc", "#ffffff", "#aaaaaa", "#ffffff"];
   const accent = accents[index % accents.length];
 
   return (
-    <AbsoluteFill
-      style={{
-        background: "#0a0a0a",
-        fontFamily,
-      }}
-    >
+    <AbsoluteFill style={{ background: "#000000" }}>
       {/* Artist Image */}
       {artistImage ? (
         <div
@@ -185,7 +257,7 @@ const ArtistCard: React.FC<{
             top: 0,
             left: 0,
             width: "100%",
-            height: "70%",
+            height: "72%",
             overflow: "hidden",
             opacity: enterSpring,
           }}
@@ -200,29 +272,27 @@ const ArtistCard: React.FC<{
               transform: `scale(${imageScale})`,
             }}
           />
-          {/* Gradient overlay */}
           <div
             style={{
               position: "absolute",
               bottom: 0,
               left: 0,
               width: "100%",
-              height: "60%",
+              height: "50%",
               background:
-                "linear-gradient(to top, #0a0a0a 0%, transparent 100%)",
+                "linear-gradient(to top, #000000 0%, #00000088 50%, transparent 100%)",
             }}
           />
         </div>
       ) : (
-        /* Placeholder when no image */
         <div
           style={{
             position: "absolute",
             top: 0,
             left: 0,
             width: "100%",
-            height: "70%",
-            background: `linear-gradient(160deg, #1a1a2e 0%, ${accent}33 100%)`,
+            height: "72%",
+            background: "#111111",
             opacity: enterSpring,
             display: "flex",
             alignItems: "center",
@@ -231,10 +301,9 @@ const ArtistCard: React.FC<{
         >
           <div
             style={{
-              fontSize: 200,
-              color: accent,
-              opacity: 0.3,
-              fontWeight: 700,
+              fontFamily: brandFont,
+              fontSize: 280,
+              color: "#222222",
             }}
           >
             {artistName.charAt(0).toUpperCase()}
@@ -245,22 +314,22 @@ const ArtistCard: React.FC<{
               bottom: 0,
               left: 0,
               width: "100%",
-              height: "60%",
+              height: "50%",
               background:
-                "linear-gradient(to top, #0a0a0a 0%, transparent 100%)",
+                "linear-gradient(to top, #000000 0%, #00000088 50%, transparent 100%)",
             }}
           />
         </div>
       )}
 
-      {/* Bottom info section */}
+      {/* Bottom info */}
       <div
         style={{
           position: "absolute",
           bottom: 0,
           left: 0,
           width: "100%",
-          padding: "0 64px 120px 64px",
+          padding: "0 64px 100px 64px",
           display: "flex",
           flexDirection: "column",
         }}
@@ -268,32 +337,55 @@ const ArtistCard: React.FC<{
         {/* Accent line */}
         <div
           style={{
-            width: interpolate(nameSpring, [0, 1], [0, 120]),
+            width: interpolate(nameSpring, [0, 1], [0, 100]),
             height: 4,
             backgroundColor: accent,
-            marginBottom: 24,
-            borderRadius: 2,
+            marginBottom: 20,
           }}
         />
 
-        {/* Artist name */}
+        {/* Artist name - brand font */}
         <div
           style={{
+            fontFamily: brandFont,
             color: "#ffffff",
-            fontSize: 80,
-            fontWeight: 700,
-            lineHeight: 1.1,
+            fontSize: 96,
+            lineHeight: 1,
             opacity: nameSpring,
             transform: `translateY(${interpolate(nameSpring, [0, 1], [40, 0])}px)`,
           }}
         >
-          {artistName}
+          {artistName.toUpperCase()}
         </div>
+
+        {/* Instagram & Website - directly under name */}
+        {(instagram || website) && (
+          <div
+            style={{
+              fontFamily: bodyFont,
+              display: "flex",
+              gap: 24,
+              marginTop: 12,
+              opacity: nameSpring,
+              transform: `translateY(${interpolate(nameSpring, [0, 1], [40, 0])}px)`,
+            }}
+          >
+            {instagram && (
+              <div style={{ color: "#aaaaaa", fontSize: 32 }}>@{instagram}</div>
+            )}
+            {website && (
+              <div style={{ color: "#aaaaaa", fontSize: 32 }}>
+                {website.replace(/^https?:\/\//, "")}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Genre tag */}
         {genre && (
           <div
             style={{
+              fontFamily: bodyFont,
               marginTop: 16,
               opacity: detailSpring,
               transform: `translateY(${interpolate(detailSpring, [0, 1], [20, 0])}px)`,
@@ -301,7 +393,7 @@ const ArtistCard: React.FC<{
           >
             <span
               style={{
-                color: accent,
+                color: "#888888",
                 fontSize: 28,
                 fontWeight: 700,
                 letterSpacing: 4,
@@ -316,7 +408,8 @@ const ArtistCard: React.FC<{
         {/* Event purpose */}
         <div
           style={{
-            color: "#b0b0b0",
+            fontFamily: bodyFont,
+            color: "#666666",
             fontSize: 30,
             marginTop: 20,
             opacity: detailSpring,
@@ -329,6 +422,7 @@ const ArtistCard: React.FC<{
         {/* Date & Time */}
         <div
           style={{
+            fontFamily: bodyFont,
             display: "flex",
             gap: 24,
             marginTop: 24,
@@ -347,14 +441,29 @@ const ArtistCard: React.FC<{
           </div>
           <div
             style={{
-              color: accent,
+              color: "#888888",
               fontSize: 36,
-              fontWeight: 700,
+              fontWeight: 400,
             }}
           >
             {eventTime}
           </div>
         </div>
+      </div>
+
+      {/* Small logo watermark bottom-right */}
+      <div
+        style={{
+          position: "absolute",
+          bottom: 32,
+          right: 40,
+          opacity: interpolate(detailSpring, [0, 1], [0, 0.3]),
+        }}
+      >
+        <Img
+          src={staticFile("logo.svg")}
+          style={{ width: 40, height: 27, filter: "invert(1)" }}
+        />
       </div>
     </AbsoluteFill>
   );
@@ -370,14 +479,13 @@ const OutroCard: React.FC = () => {
     frame,
     fps,
     config: { damping: 200 },
-    delay: 10,
+    delay: 12,
   });
 
   return (
     <AbsoluteFill
       style={{
-        background: "linear-gradient(160deg, #0a0a0a 0%, #1a1a2e 100%)",
-        fontFamily,
+        background: "#000000",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
@@ -385,45 +493,26 @@ const OutroCard: React.FC = () => {
         padding: 80,
       }}
     >
-      <div
-        style={{
-          color: "#ffffff",
-          fontSize: 64,
-          fontWeight: 700,
-          textAlign: "center",
-          opacity: logoSpring,
-          transform: `scale(${interpolate(logoSpring, [0, 1], [0.8, 1])})`,
-        }}
-      >
-        WATERHOUSE
-      </div>
-      <div
-        style={{
-          color: "#ff6b35",
-          fontSize: 28,
-          letterSpacing: 10,
-          textTransform: "uppercase",
-          marginTop: 12,
-          opacity: logoSpring,
-        }}
-      >
-        STUDIOS
-      </div>
+      <WaterhouseLogo
+        scale={interpolate(logoSpring, [0, 1], [0.85, 1])}
+        opacity={logoSpring}
+      />
 
       <div
         style={{
-          width: 80,
+          width: 60,
           height: 2,
-          background: "#ff6b35",
-          marginTop: 48,
-          marginBottom: 48,
+          background: "#444444",
+          marginTop: 56,
+          marginBottom: 56,
           opacity: ctaSpring,
         }}
       />
 
       <div
         style={{
-          color: "#b0b0b0",
+          fontFamily: bodyFont,
+          color: "#666666",
           fontSize: 32,
           opacity: ctaSpring,
           transform: `translateY(${interpolate(ctaSpring, [0, 1], [20, 0])}px)`,
@@ -442,14 +531,12 @@ export const WeeklyLineup: React.FC<WeeklyLineupProps> = ({
   artists,
 }) => {
   return (
-    <AbsoluteFill style={{ backgroundColor: "#0a0a0a" }}>
+    <AbsoluteFill style={{ backgroundColor: "#000000" }}>
       <TransitionSeries>
-        {/* Intro */}
         <TransitionSeries.Sequence durationInFrames={INTRO_DURATION}>
           <IntroCard weekLabel={weekLabel} dateRange={dateRange} />
         </TransitionSeries.Sequence>
 
-        {/* Artist cards */}
         {artists.map((artist, i) => (
           <React.Fragment key={i}>
             <TransitionSeries.Transition
@@ -461,6 +548,8 @@ export const WeeklyLineup: React.FC<WeeklyLineupProps> = ({
                 artistName={artist.artistName}
                 artistImage={artist.artistImage}
                 genre={artist.genre}
+                instagram={artist.instagram}
+                website={artist.website}
                 eventDate={artist.eventDate}
                 eventTime={artist.eventTime}
                 purpose={artist.purpose}
@@ -470,7 +559,6 @@ export const WeeklyLineup: React.FC<WeeklyLineupProps> = ({
           </React.Fragment>
         ))}
 
-        {/* Outro */}
         <TransitionSeries.Transition
           presentation={fade()}
           timing={linearTiming({ durationInFrames: TRANSITION_DURATION })}
@@ -482,6 +570,3 @@ export const WeeklyLineup: React.FC<WeeklyLineupProps> = ({
     </AbsoluteFill>
   );
 };
-
-// Need React in scope for JSX fragments
-import React from "react";
