@@ -238,6 +238,12 @@ const ArtistCard: React.FC<{
     config: { damping: 200 },
     delay: 14,
   });
+  const pillSpring = spring({
+    frame,
+    fps,
+    config: { damping: 15, stiffness: 100 },
+    delay: 10,
+  });
 
   const imageScale = interpolate(frame, [0, durationInFrames], [1.05, 1.15], {
     extrapolateRight: "clamp",
@@ -321,6 +327,69 @@ const ArtistCard: React.FC<{
           />
         </div>
       )}
+
+      {/* Floating date/time pill - top right */}
+      <div
+        style={{
+          position: "absolute",
+          top: 160,
+          right: 40,
+          zIndex: 10,
+          opacity: pillSpring,
+          transform: `translateX(${interpolate(pillSpring, [0, 1], [30, 0])}px)`,
+        }}
+      >
+        <div
+          style={{
+            background: "rgba(0, 0, 0, 0.55)",
+            backdropFilter: "blur(16px)",
+            WebkitBackdropFilter: "blur(16px)",
+            borderRadius: 20,
+            padding: "20px 32px",
+            border: "1px solid rgba(255, 255, 255, 0.1)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          <div
+            style={{
+              fontFamily: bodyFont,
+              color: "#ffffff",
+              fontSize: 34,
+              fontWeight: 700,
+              letterSpacing: 1,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {eventDate.toUpperCase()}
+          </div>
+          <div
+            style={{
+              fontFamily: bodyFont,
+              color: "rgba(255, 255, 255, 0.5)",
+              fontSize: 30,
+              fontWeight: 400,
+              whiteSpace: "nowrap",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            <span
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: "50%",
+                backgroundColor: "rgba(255, 255, 255, 0.35)",
+                display: "inline-block",
+              }}
+            />
+            {eventTime}
+          </div>
+        </div>
+      </div>
 
       {/* Bottom info */}
       <div
@@ -419,36 +488,6 @@ const ArtistCard: React.FC<{
           {purpose}
         </div>
 
-        {/* Date & Time */}
-        <div
-          style={{
-            fontFamily: bodyFont,
-            display: "flex",
-            gap: 24,
-            marginTop: 24,
-            opacity: detailSpring,
-            transform: `translateY(${interpolate(detailSpring, [0, 1], [20, 0])}px)`,
-          }}
-        >
-          <div
-            style={{
-              color: "#ffffff",
-              fontSize: 36,
-              fontWeight: 700,
-            }}
-          >
-            {eventDate}
-          </div>
-          <div
-            style={{
-              color: "#888888",
-              fontSize: 36,
-              fontWeight: 400,
-            }}
-          >
-            {eventTime}
-          </div>
-        </div>
       </div>
 
       {/* Small logo watermark bottom-right */}
