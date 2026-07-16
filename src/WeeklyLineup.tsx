@@ -173,7 +173,7 @@ const IntroCard: React.FC<{ weekLabel: string; dateRange: string }> = ({
         style={{
           fontFamily: brandFont,
           color: "#ffffff",
-          fontSize: 120,
+          fontSize: 240,
           textAlign: "center",
           lineHeight: 1,
           opacity: weekSpring,
@@ -533,7 +533,7 @@ const OutroCard: React.FC = () => {
       }}
     >
       <WaterhouseLogo
-        scale={interpolate(logoSpring, [0, 1], [0.85, 1])}
+        scale={interpolate(logoSpring, [0, 1], [1.7, 2])}
         opacity={logoSpring}
       />
 
