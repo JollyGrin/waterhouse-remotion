@@ -2,7 +2,9 @@ import React from "react";
 import { z } from "zod";
 import {
   AbsoluteFill,
+  Audio,
   Img,
+  Sequence,
   interpolate,
   spring,
   staticFile,
@@ -440,6 +442,92 @@ const ChatBubble: React.FC<{
   );
 };
 
+// --- Sound ---------------------------------------------------------------
+//
+// Environmental, never musical: the same clip ships for every artist and
+// genre, so there is no key, melody, tempo or percussion that could clash
+// with a DJ's set. See scripts/gen-audio.ts for how the wavs are made.
+//
+// bed.wav and presence.wav are both exactly 300 frames long and wrap onto
+// themselves, so neither needs looping and neither clicks at the seam.
+
+const sfx = (name: string) => staticFile(`audio/pullup/${name}.wav`);
+
+/**
+ * Continuous version of the viewer counter, 0..1. Drives the room presence
+ * swell: silent in an empty room, full with all seven in. Zero at frame 0
+ * and zero again by frame 298, so the audio wraps as cleanly as the video.
+ */
+function roomLevel(frame: number): number {
+  let level = 0;
+  for (let slot = 0; slot < CIRCLES; slot++) {
+    const inAt = avatarInFrame(slot);
+    const outAt = avatarOutFrame(slot);
+    const rise = interpolate(frame, [inAt, inAt + 10], [0, 1], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+    });
+    const fall = interpolate(frame, [outAt, outAt + AV_OUT_DURATION], [1, 0], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+    });
+    level += Math.min(rise, fall);
+  }
+  return level / CIRCLES;
+}
+
+const PullUpAudio: React.FC = () => {
+  return (
+    <>
+      {/* Room tone: sub drone + dark filtered noise. Felt, not heard. */}
+      <Audio src={sfx("bed")} />
+
+      {/* Room presence, following the counter 0 -> 7 -> 0. */}
+      <Audio src={sfx("presence")} volume={(f) => roomLevel(f)} />
+
+      {/* Impact under the headline/ask punch - fires on every loop. */}
+      <Sequence durationInFrames={15}>
+        <Audio src={sfx("thud")} />
+      </Sequence>
+
+      {/* You arrive first. */}
+      <Sequence from={YOU_IN} durationInFrames={8}>
+        <Audio src={sfx("pop-you")} />
+      </Sequence>
+      <Sequence from={YOU_IN} durationInFrames={2}>
+        <Audio src={sfx("click")} />
+      </Sequence>
+
+      {/* Then the roster, each blip a little lower than the last. */}
+      {Array.from({ length: FRIENDS }).map((_, i) => (
+        <React.Fragment key={i}>
+          <Sequence from={avatarInFrame(i + 1)} durationInFrames={8}>
+            <Audio src={sfx(`pop-friend-${i}`)} />
+          </Sequence>
+          <Sequence from={avatarInFrame(i + 1)} durationInFrames={2}>
+            <Audio src={sfx("click")} />
+          </Sequence>
+        </React.Fragment>
+      ))}
+
+      {/* Chat ticks - your message, then the two trailing ones. */}
+      {CHAT_IN_FRAMES.map((f, i) => (
+        <Sequence key={i} from={f} durationInFrames={9}>
+          <Audio src={sfx("msg")} />
+        </Sequence>
+      ))}
+
+      {/* The room empties: a downward band sweep ending at silence. */}
+      <Sequence
+        from={SEAM_START}
+        durationInFrames={PULLUP_DURATION - SEAM_START}
+      >
+        <Audio src={sfx("whoosh")} />
+      </Sequence>
+    </>
+  );
+};
+
 // --- Main composition ---
 export const PullUp: React.FC<PullUpProps> = ({
   artistName,
@@ -481,6 +569,8 @@ export const PullUp: React.FC<PullUpProps> = ({
 
   return (
     <AbsoluteFill style={{ backgroundColor: "#000000" }}>
+      <PullUpAudio />
+
       {/* Hook - where to watch. On screen from frame 0, slams on every loop. */}
       <div
         style={{
