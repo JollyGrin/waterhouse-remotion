@@ -41,7 +41,8 @@ export const PullUpSchema = z.object({
   avatars: z.array(AvatarSchema),
   chatLines: z.array(ChatLineSchema),
   seed: z.number().optional(),
-  // Audio only - selects which bed texture plays. No visual effect.
+  // Audio only - selects which bed texture plays, default "b". No visual
+  // effect whatsoever.
   bedVariant: z.enum(["base", "a", "b", "c"]).optional(),
 });
 
@@ -478,7 +479,7 @@ function roomLevel(frame: number): number {
   return level / CIRCLES;
 }
 
-const PullUpAudio: React.FC<{ bedVariant?: "base" | "a" | "b" | "c" }> = ({
+const PullUpAudio: React.FC<{ bedVariant: "base" | "a" | "b" | "c" }> = ({
   bedVariant,
 }) => {
   const bed = bedVariant && bedVariant !== "base" ? `bed-${bedVariant}` : "bed";
@@ -542,7 +543,9 @@ export const PullUp: React.FC<PullUpProps> = ({
   avatars,
   chatLines,
   seed = 0,
-  bedVariant,
+  // B (pre-show venue) is the shipped bed; A, C and the synthesised "base"
+  // stay selectable through this prop.
+  bedVariant = "b",
 }) => {
   const frame = useCurrentFrame();
 

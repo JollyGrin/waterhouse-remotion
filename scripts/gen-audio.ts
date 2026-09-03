@@ -600,13 +600,14 @@ const PEAKS: Record<string, number> = {
   click: -20,
   msg: -11,
   whoosh: -9,
-  // Beds sit ~12dB under the SFX peaks, not ~28: buried beds are what made
-  // the three variants sound identical.
-  bed: -1,
-  "bed-a": -1,
-  "bed-b": -3.5,
-  "bed-c": -4,
-  presence: -1.5,
+  // Beds and presence sit 4.5dB lower than the pass that made the variants
+  // distinguishable, so the SFX read clearly on top. The riser lives inside
+  // the bed, so it scales with it and still builds into the seam.
+  bed: -5.5,
+  "bed-a": -5.5,
+  "bed-b": -8,
+  "bed-c": -8.5,
+  presence: -6,
 };
 
 function main() {
@@ -634,7 +635,7 @@ function main() {
   );
   buildBed();
 
-  console.log("  presence.wav   four detuned noise bands, 300-3000Hz");
+  console.log("  presence.wav   real pre-concert crowd, wrapped");
   buildPresence();
 
   console.log("  bed-a.wav      variant A: outside -> inside (rain + city)");

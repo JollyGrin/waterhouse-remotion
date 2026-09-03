@@ -107,6 +107,7 @@ export const RemotionRoot: React.FC = () => {
           avatars: defaultPullUpAvatars,
           chatLines: defaultPullUpChat,
           seed: 0,
+          bedVariant: "b" as const,
         }}
       />
       {/* Second demo artist - no photo, no genre: exercises the fallbacks. */}
@@ -128,6 +129,7 @@ export const RemotionRoot: React.FC = () => {
           avatars: defaultPullUpAvatars,
           chatLines: fallbackPullUpChat,
           seed: 2,
+          bedVariant: "b" as const,
         }}
       />
     </>
