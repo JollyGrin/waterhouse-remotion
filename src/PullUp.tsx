@@ -44,18 +44,27 @@ export const PullUpSchema = z.object({
 export type PullUpProps = z.infer<typeof PullUpSchema>;
 
 // --- Timing (30fps, 300 frames = 10s, seamless loop) ---
+//
+// The headline and the ask are on screen and at rest at frame 0 and never
+// leave, so the loop always restarts on the call to action. Their "slam" is
+// an impact punch that starts and ends at rest, which means it re-fires on
+// every loop instead of breaking the seam. Only the room - the avatar row,
+// the chat and the counter - fills up and resets.
 export const PULLUP_DURATION = 300;
 
-const FRIENDS = 6; // avatar circles from props, plus the trailing "YOU?" circle
+const FRIENDS = 6; // roster avatars; the leading "YOU" circle is composition-owned
 const CIRCLES = FRIENDS + 1;
 
-const AV_IN_START = 45; // 1.5s
-const AV_IN_STAGGER = 12; // 0.4s apart -> last lands at frame 117 (3.9s)
-const CHAT_IN_START = 135; // 4.5s
-const CHAT_IN_STAGGER = 15;
-const ASK_START = 195; // 6.5s
-const SEAM_START = 268; // ~9.0s
-const AV_OUT_STAGGER = 3; // reverse order pop-out
+const HEADLINE_PUNCH_END = 30; // 0 - 1.0s
+const ASK_PUNCH_START = 30; // 1.0 - 2.2s
+const ASK_PUNCH_END = 66;
+const YOU_IN = 75; // 2.5s - you are the first one in the room
+const FRIENDS_IN_START = 150; // 5.0s - only after your message lands
+const FRIENDS_IN_STAGGER = 12; // last friend lands at frame 210 (7.0s)
+// Your bubble goes up alone at 3.5s; the other two trail the arriving friends.
+const CHAT_IN_FRAMES = [105, 180, 210];
+const SEAM_START = 276; // 9.2s
+const AV_OUT_STAGGER = 2; // reverse order: last friend leaves first, YOU last
 const AV_OUT_DURATION = 10;
 
 // Accent variants, picked deterministically from `seed`.
@@ -72,10 +81,32 @@ const AVATAR_COLORS = [
   "#FFD24A",
 ];
 
-const avatarInFrame = (i: number) => AV_IN_START + i * AV_IN_STAGGER;
-// Last circle leaves first, so the room empties the way it filled.
-const avatarOutFrame = (i: number) =>
-  SEAM_START + (CIRCLES - 1 - i) * AV_OUT_STAGGER;
+// Slot 0 is YOU, slots 1..6 are the roster.
+const avatarInFrame = (slot: number) =>
+  slot === 0 ? YOU_IN : FRIENDS_IN_START + (slot - 1) * FRIENDS_IN_STAGGER;
+const avatarOutFrame = (slot: number) =>
+  SEAM_START + (CIRCLES - 1 - slot) * AV_OUT_STAGGER;
+const chatInFrame = (index: number) =>
+  CHAT_IN_FRAMES[index] ?? CHAT_IN_FRAMES[CHAT_IN_FRAMES.length - 1];
+
+// Jersey 10 caps run about 0.40em wide. Shrink long headlines rather than
+// letting them wrap or clip - artist names vary a lot in length.
+function fitBrandSize(text: string, maxWidth: number, cap: number): number {
+  if (text.length === 0) return cap;
+  return Math.min(cap, maxWidth / (text.length * 0.4));
+}
+
+// An impact: at rest, hit, overshoot, settle back to rest. Zero deviation at
+// both ends, so it is safe to run across the loop seam.
+function punch(frame: number, start: number, end: number, amount: number) {
+  const span = end - start;
+  return interpolate(
+    frame,
+    [start, start + span * 0.16, start + span * 0.45, end],
+    [1, 1 + amount, 1 - amount * 0.22, 1],
+    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+  );
+}
 
 // --- Twitch-style viewer counter ---
 const ViewerCounter: React.FC<{ count: number }> = ({ count }) => {
@@ -115,7 +146,7 @@ const ViewerCounter: React.FC<{ count: number }> = ({ count }) => {
   );
 };
 
-// --- Player frame: artist alone in the stream window ---
+// --- Player frame ---
 const PlayerFrame: React.FC<{
   artistName: string;
   artistImage: string | null;
@@ -132,11 +163,11 @@ const PlayerFrame: React.FC<{
     <div
       style={{
         position: "absolute",
-        top: 120,
-        left: 90,
-        width: 900,
-        height: 700,
-        borderRadius: 28,
+        top: 258,
+        left: 130,
+        width: 820,
+        height: 560,
+        borderRadius: 26,
         overflow: "hidden",
         border: "2px solid rgba(255, 255, 255, 0.14)",
         background: "#0b0b0b",
@@ -167,7 +198,7 @@ const PlayerFrame: React.FC<{
           <div
             style={{
               fontFamily: brandFont,
-              fontSize: 420,
+              fontSize: 340,
               lineHeight: 1,
               color: "#222222",
               transform: `scale(${breathe})`,
@@ -195,8 +226,8 @@ const PlayerFrame: React.FC<{
       <div
         style={{
           position: "absolute",
-          top: 26,
-          left: 26,
+          top: 24,
+          left: 24,
           display: "flex",
           alignItems: "center",
           gap: 10,
@@ -229,26 +260,26 @@ const PlayerFrame: React.FC<{
       </div>
 
       {/* Viewer counter - top right */}
-      <div style={{ position: "absolute", top: 26, right: 26 }}>
+      <div style={{ position: "absolute", top: 24, right: 24 }}>
         <ViewerCounter count={viewers} />
       </div>
     </div>
   );
 };
 
-// --- One avatar circle in the "room" row ---
+// --- One avatar circle. Slot 0 is YOU, and arrives first. ---
 const AvatarCircle: React.FC<{
-  index: number;
+  slot: number;
   label: string;
   image: string | null;
   isYou: boolean;
   accent: string;
-}> = ({ index, label, image, isYou, accent }) => {
+}> = ({ slot, label, image, isYou, accent }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  const inAt = avatarInFrame(index);
-  const outAt = avatarOutFrame(index);
+  const inAt = avatarInFrame(slot);
+  const outAt = avatarOutFrame(slot);
 
   const enter = spring({
     frame,
@@ -263,15 +294,17 @@ const AvatarCircle: React.FC<{
 
   const scale = enter * exit;
 
-  // The "YOU?" circle pulses once shortly after it lands.
+  // YOU gets a single pulse once it has landed.
   const pulse = isYou
-    ? interpolate(frame, [inAt + 20, inAt + 30, inAt + 44], [1, 1.16, 1], {
+    ? interpolate(frame, [inAt + 20, inAt + 30, inAt + 46], [1, 1.18, 1], {
         extrapolateLeft: "clamp",
         extrapolateRight: "clamp",
       })
     : 1;
 
-  const color = isYou ? accent : AVATAR_COLORS[index % AVATAR_COLORS.length];
+  const color = isYou
+    ? accent
+    : AVATAR_COLORS[(slot - 1) % AVATAR_COLORS.length];
 
   // The slot always reserves its space so the row never reflows mid-arrival.
   return (
@@ -294,8 +327,8 @@ const AvatarCircle: React.FC<{
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: isYou ? "transparent" : "#141414",
-          border: isYou ? `4px dashed ${color}` : `3px solid ${color}`,
+          background: isYou ? color : "#141414",
+          border: `3px solid ${color}`,
           transform: `scale(${scale * pulse})`,
           opacity: Math.min(scale, 1),
         }}
@@ -309,12 +342,12 @@ const AvatarCircle: React.FC<{
           <span
             style={{
               fontFamily: brandFont,
-              fontSize: isYou ? 52 : 58,
+              fontSize: 56,
               lineHeight: 1,
-              color: isYou ? color : "#ffffff",
+              color: isYou ? "#000000" : "#ffffff",
             }}
           >
-            {isYou ? "YOU?" : label.slice(0, 2).toUpperCase()}
+            {isYou ? "YOU" : label.slice(0, 2).toUpperCase()}
           </span>
         )}
       </div>
@@ -332,11 +365,11 @@ const ChatBubble: React.FC<{
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  const inAt = CHAT_IN_START + index * CHAT_IN_STAGGER;
+  const isYou = name.toLowerCase() === "you";
   const enter = spring({
     frame,
     fps,
-    delay: inAt,
+    delay: chatInFrame(index),
     config: { damping: 16, stiffness: 110, mass: 0.7 },
   });
   const exit = interpolate(frame, [SEAM_START, SEAM_START + 16], [1, 0], {
@@ -344,7 +377,9 @@ const ChatBubble: React.FC<{
     extrapolateRight: "clamp",
   });
 
-  const opacity = enter * exit;
+  const dotColor = isYou
+    ? accent
+    : AVATAR_COLORS[(index + 2) % AVATAR_COLORS.length];
 
   return (
     <div
@@ -353,11 +388,13 @@ const ChatBubble: React.FC<{
         alignItems: "center",
         gap: 18,
         alignSelf: "flex-start",
-        background: "rgba(255, 255, 255, 0.06)",
-        border: "1px solid rgba(255, 255, 255, 0.09)",
+        background: isYou
+          ? "rgba(255, 255, 255, 0.1)"
+          : "rgba(255, 255, 255, 0.06)",
+        border: `1px solid ${isYou ? `${accent}66` : "rgba(255, 255, 255, 0.09)"}`,
         borderRadius: 20,
-        padding: "16px 28px",
-        opacity,
+        padding: "14px 26px",
+        opacity: enter * exit,
         transform: `translateY(${interpolate(enter, [0, 1], [70, 0])}px)`,
       }}
     >
@@ -366,7 +403,7 @@ const ChatBubble: React.FC<{
           width: 44,
           height: 44,
           borderRadius: "50%",
-          background: AVATAR_COLORS[(index + 2) % AVATAR_COLORS.length],
+          background: dotColor,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -383,7 +420,7 @@ const ChatBubble: React.FC<{
           fontFamily: bodyFont,
           fontWeight: 700,
           fontSize: 32,
-          color: accent,
+          color: dotColor,
           whiteSpace: "nowrap",
         }}
       >
@@ -403,152 +440,10 @@ const ChatBubble: React.FC<{
   );
 };
 
-// --- The ask ---
-const AskBlock: React.FC<{
-  artistName: string;
-  eventDay: string;
-  eventTime: string;
-  accent: string;
-}> = ({ artistName, eventDay, eventTime, accent }) => {
-  const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
-
-  const headline = spring({
-    frame,
-    fps,
-    delay: ASK_START,
-    config: { damping: 15, stiffness: 80 },
-  });
-  const sub = spring({
-    frame,
-    fps,
-    delay: ASK_START + 10,
-    config: { damping: 200 },
-  });
-  const details = spring({
-    frame,
-    fps,
-    delay: ASK_START + 20,
-    config: { damping: 200 },
-  });
-  const exit = interpolate(frame, [SEAM_START, SEAM_START + 20], [1, 0], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-  });
-
-  return (
-    <div
-      style={{
-        position: "absolute",
-        top: 1120,
-        left: 70,
-        width: 940,
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        opacity: exit,
-      }}
-    >
-      <div
-        style={{
-          width: interpolate(headline, [0, 1], [0, 120]),
-          height: 4,
-          background: accent,
-          marginBottom: 24,
-        }}
-      />
-
-      <div
-        style={{
-          fontFamily: brandFont,
-          fontSize: 128,
-          lineHeight: 0.92,
-          color: "#ffffff",
-          textAlign: "center",
-          opacity: headline,
-          transform: `translateY(${interpolate(headline, [0, 1], [40, 0])}px)`,
-        }}
-      >
-        COME HANG FOR A BIT.
-      </div>
-
-      <div
-        style={{
-          fontFamily: bodyFont,
-          fontSize: 38,
-          color: "#8a8a8a",
-          textAlign: "center",
-          marginTop: 18,
-          opacity: sub,
-          transform: `translateY(${interpolate(sub, [0, 1], [20, 0])}px)`,
-        }}
-      >
-        muted is fine. stay if it&apos;s good.
-      </div>
-
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 20,
-          marginTop: 34,
-          opacity: details,
-          transform: `translateY(${interpolate(details, [0, 1], [20, 0])}px)`,
-        }}
-      >
-        <span
-          style={{
-            fontFamily: brandFont,
-            fontSize: 64,
-            lineHeight: 1,
-            color: "#ffffff",
-          }}
-        >
-          {artistName.toUpperCase()}
-        </span>
-        <span
-          style={{
-            width: 6,
-            height: 6,
-            borderRadius: "50%",
-            background: "#555555",
-            display: "inline-block",
-          }}
-        />
-        <span
-          style={{
-            fontFamily: bodyFont,
-            fontSize: 34,
-            fontWeight: 700,
-            letterSpacing: 2,
-            color: "#8a8a8a",
-          }}
-        >
-          {eventDay.toUpperCase()} {eventTime}
-        </span>
-      </div>
-
-      <div
-        style={{
-          fontFamily: brandFont,
-          fontSize: 56,
-          lineHeight: 1,
-          marginTop: 22,
-          opacity: details,
-        }}
-      >
-        <span style={{ color: "#9146FF" }}>TWITCH.TV/</span>
-        <span style={{ color: "#ffffff" }}>WATERHOUSESTUDIOS</span>
-      </div>
-    </div>
-  );
-};
-
 // --- Main composition ---
 export const PullUp: React.FC<PullUpProps> = ({
   artistName,
   artistImage,
-  genre,
   eventDay,
   eventTime,
   avatars,
@@ -576,12 +471,61 @@ export const PullUp: React.FC<PullUpProps> = ({
     }
   }
 
-  const caption = genre
-    ? `${eventDay.toUpperCase()} ${eventTime} · ${genre.toUpperCase()}`
-    : `${eventDay.toUpperCase()} ${eventTime}`;
+  const day = eventDay.toUpperCase();
+  const artist = artistName.toUpperCase();
+  const headlineText = `COME WATCH ${artist} LIVE`;
+  const streamingText = `STREAMING ${day} ${eventTime}`;
+
+  const headlinePunch = punch(frame, 0, HEADLINE_PUNCH_END, 0.1);
+  const askPunch = punch(frame, ASK_PUNCH_START, ASK_PUNCH_END, 0.06);
 
   return (
     <AbsoluteFill style={{ backgroundColor: "#000000" }}>
+      {/* Hook - where to watch. On screen from frame 0, slams on every loop. */}
+      <div
+        style={{
+          position: "absolute",
+          top: 40,
+          left: 70,
+          width: 940,
+          height: 200,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          transform: `scale(${headlinePunch})`,
+        }}
+      >
+        <div
+          style={{
+            fontFamily: brandFont,
+            fontSize: fitBrandSize(headlineText, 940, 124),
+            lineHeight: 1,
+            color: "#ffffff",
+            textAlign: "center",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {headlineText}
+        </div>
+        <div
+          style={{
+            fontFamily: bodyFont,
+            fontSize: 34,
+            fontWeight: 700,
+            letterSpacing: 2,
+            marginTop: 14,
+            whiteSpace: "nowrap",
+          }}
+        >
+          <span style={{ color: "#9146FF" }}>TWITCH.TV/WATERHOUSESTUDIOS</span>
+          <span style={{ color: "#666666" }}> · </span>
+          <span style={{ color: "#cccccc" }}>
+            {day} {eventTime}
+          </span>
+        </div>
+      </div>
+
       <PlayerFrame
         artistName={artistName}
         artistImage={artistImage}
@@ -592,63 +536,118 @@ export const PullUp: React.FC<PullUpProps> = ({
       <div
         style={{
           position: "absolute",
-          top: 852,
-          left: 90,
-          width: 900,
+          top: 836,
+          left: 70,
+          width: 940,
+          height: 42,
           textAlign: "center",
           fontFamily: bodyFont,
-          fontSize: 34,
+          fontSize: 32,
           fontWeight: 700,
           letterSpacing: 5,
           color: "#8a8a8a",
         }}
       >
-        {caption}
+        {day} {eventTime} · {artist}
       </div>
 
-      {/* The room fills up */}
+      {/* The ask - on screen from frame 0, never leaves */}
       <div
         style={{
           position: "absolute",
-          top: 940,
+          top: 900,
+          left: 70,
+          width: 940,
+          height: 380,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+        }}
+      >
+        <div
+          style={{
+            width: 120,
+            height: 4,
+            background: accent,
+            marginBottom: 18,
+          }}
+        />
+
+        <div
+          style={{
+            fontFamily: brandFont,
+            fontSize: fitBrandSize(streamingText, 940, 124),
+            lineHeight: 1,
+            color: "#ffffff",
+            whiteSpace: "nowrap",
+            transform: `scale(${askPunch})`,
+          }}
+        >
+          {streamingText}
+        </div>
+
+        <div
+          style={{
+            fontFamily: brandFont,
+            fontSize: 92,
+            lineHeight: 1,
+            marginTop: 8,
+            color: accent,
+            whiteSpace: "nowrap",
+          }}
+        >
+          COME HANG FOR A BIT.
+        </div>
+
+        <div
+          style={{
+            fontFamily: bodyFont,
+            fontSize: 32,
+            lineHeight: 1.35,
+            color: "#8a8a8a",
+            textAlign: "center",
+            marginTop: 18,
+            maxWidth: 820,
+          }}
+        >
+          every viewer helps more people find the set.
+          <br />
+          muted is fine, stay if it&apos;s good.
+        </div>
+      </div>
+
+      {/* The room fills up around the ask - you first, then the roster.
+          Left-aligned to the chat column, so YOU alone reads as the head of
+          a queue rather than an orphaned circle. */}
+      <div
+        style={{
+          position: "absolute",
+          top: 1300,
           left: 70,
           width: 940,
           height: 116,
           display: "flex",
           alignItems: "center",
-          justifyContent: "center",
+          justifyContent: "flex-start",
           gap: 14,
         }}
       >
+        <AvatarCircle slot={0} label="YOU" image={null} isYou accent={accent} />
         {friends.map((a, i) => (
           <AvatarCircle
             key={i}
-            index={i}
+            slot={i + 1}
             label={a.label}
             image={a.image}
             isYou={false}
             accent={accent}
           />
         ))}
-        <AvatarCircle
-          index={FRIENDS}
-          label="YOU?"
-          image={null}
-          isYou
-          accent={accent}
-        />
       </div>
-
-      <AskBlock
-        artistName={artistName}
-        eventDay={eventDay}
-        eventTime={eventTime}
-        accent={accent}
-      />
 
       {/* Logo watermark - constant, so it never disturbs the loop seam */}
       <div
-        style={{ position: "absolute", bottom: 30, right: 56, opacity: 0.38 }}
+        style={{ position: "absolute", bottom: 26, right: 50, opacity: 0.38 }}
       >
         <Img
           src={staticFile("logo.svg")}
@@ -656,11 +655,11 @@ export const PullUp: React.FC<PullUpProps> = ({
         />
       </div>
 
-      {/* Chat wakes up */}
+      {/* Chat - your message first, the others trail the arriving friends */}
       <div
         style={{
           position: "absolute",
-          bottom: 76,
+          bottom: 96,
           left: 70,
           width: 940,
           display: "flex",

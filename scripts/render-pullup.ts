@@ -163,7 +163,13 @@ function slugify(name: string): string {
 }
 
 function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
+  // Strip punctuation first - stage names like "(N)ARZ" would otherwise
+  // yield "(N" as their avatar label.
+  const parts = name
+    .replace(/[^A-Za-z0-9\s]/g, "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
   if (parts.length === 0) return "??";
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[1][0]).toUpperCase();
@@ -245,12 +251,20 @@ async function buildAvatars(
   return avatars;
 }
 
+// The first bubble is always yours - you are the first one in the room, and
+// the composition styles the "you" line with the accent colour to match the
+// leading YOU avatar. The other two are seeded picks from the pool.
 function buildChatLines(
+  artistName: string,
   rng: () => number,
 ): Array<{ name: string; text: string }> {
-  const names = pickDistinct(CHAT_NAMES, 3, rng);
-  const texts = pickDistinct(CHAT_POOL, 3, rng);
-  return names.map((name, i) => ({ name, text: texts[i] }));
+  const names = pickDistinct(CHAT_NAMES, 2, rng);
+  const texts = pickDistinct(CHAT_POOL, 2, rng);
+  return [
+    { name: "you", text: `let's go ${artistName}!` },
+    { name: names[0], text: texts[0] },
+    { name: names[1], text: texts[1] },
+  ];
 }
 
 // --- Render one clip ---
@@ -273,7 +287,7 @@ async function renderClip(
     eventTime: formatTime(event.start_time),
     eventDate: formatDate(event.start_time),
     avatars: await buildAvatars(roster, artist.id, rng),
-    chatLines: buildChatLines(rng),
+    chatLines: buildChatLines(artist.stage_name, rng),
     seed: seed % 4,
   };
 

@@ -50,10 +50,17 @@ const defaultPullUpAvatars = [
   { label: "TN", image: null },
 ];
 
+// The first bubble is always yours - you act before anyone else arrives.
 const defaultPullUpChat = [
-  { name: "mira", text: "heyy \u{1F44B}" },
+  { name: "you", text: "let's go Denzo!" },
   { name: "joos", text: "track 3 is nasty" },
   { name: "sef", text: "what is this??" },
+];
+
+const fallbackPullUpChat = [
+  { name: "you", text: "let's go The Silintist!" },
+  { name: "mira", text: "heyy \u{1F44B}" },
+  { name: "roos", text: "what is this??" },
 ];
 
 export const RemotionRoot: React.FC = () => {
@@ -119,7 +126,7 @@ export const RemotionRoot: React.FC = () => {
           eventTime: "20:00",
           eventDate: "Fri 7 Mar",
           avatars: defaultPullUpAvatars,
-          chatLines: defaultPullUpChat,
+          chatLines: fallbackPullUpChat,
           seed: 2,
         }}
       />
