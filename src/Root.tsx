@@ -7,6 +7,7 @@ import {
   getCompositionDuration,
   type WeeklyLineupProps,
 } from "./WeeklyLineup";
+import { PullUp, PullUpSchema, PULLUP_DURATION } from "./PullUp";
 
 const calculateWeeklyMetadata: CalculateMetadataFunction<WeeklyLineupProps> = ({
   props,
@@ -39,6 +40,29 @@ const defaultArtists: WeeklyLineupProps["artists"] = [
   },
 ];
 
+// Demo data for PullUp - the same two artists WeeklyLineup previews with.
+const defaultPullUpAvatars = [
+  { label: "MZ", image: null },
+  { label: "NB", image: null },
+  { label: "SR", image: null },
+  { label: "JV", image: null },
+  { label: "KL", image: null },
+  { label: "TN", image: null },
+];
+
+// The first bubble is always yours - you act before anyone else arrives.
+const defaultPullUpChat = [
+  { name: "you", text: "let's go Denzo!" },
+  { name: "joos", text: "track 3 is nasty" },
+  { name: "sef", text: "what is this??" },
+];
+
+const fallbackPullUpChat = [
+  { name: "you", text: "let's go The Silintist!" },
+  { name: "mira", text: "heyy \u{1F44B}" },
+  { name: "roos", text: "what is this??" },
+];
+
 export const RemotionRoot: React.FC = () => {
   return (
     <>
@@ -63,6 +87,49 @@ export const RemotionRoot: React.FC = () => {
           weekLabel: "THIS WEEK",
           dateRange: "3 - 9 March",
           artists: defaultArtists,
+        }}
+      />
+      <Composition
+        id="PullUp"
+        component={PullUp}
+        schema={PullUpSchema}
+        durationInFrames={PULLUP_DURATION}
+        fps={30}
+        width={1080}
+        height={1920}
+        defaultProps={{
+          artistName: "Denzo",
+          artistImage: "https://i.imgur.com/nt2wsuD.png",
+          genre: "Dub Techno",
+          eventDay: "Thu",
+          eventTime: "19:00",
+          eventDate: "Thu 5 Mar",
+          avatars: defaultPullUpAvatars,
+          chatLines: defaultPullUpChat,
+          seed: 0,
+          bedVariant: "b" as const,
+        }}
+      />
+      {/* Second demo artist - no photo, no genre: exercises the fallbacks. */}
+      <Composition
+        id="PullUpFallback"
+        component={PullUp}
+        schema={PullUpSchema}
+        durationInFrames={PULLUP_DURATION}
+        fps={30}
+        width={1080}
+        height={1920}
+        defaultProps={{
+          artistName: "The Silintist",
+          artistImage: null,
+          genre: null,
+          eventDay: "Fri",
+          eventTime: "20:00",
+          eventDate: "Fri 7 Mar",
+          avatars: defaultPullUpAvatars,
+          chatLines: fallbackPullUpChat,
+          seed: 2,
+          bedVariant: "b" as const,
         }}
       />
     </>
