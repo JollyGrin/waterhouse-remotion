@@ -31,7 +31,8 @@
     "lint": "eslint src && tsc",
     "render:weekly": "bun scripts/render-weekly.ts",
     "render:pullup": "bun scripts/render-pullup.ts",
-    "gen:audio": "bun scripts/gen-audio.ts"
+    "gen:audio": "bun scripts/gen-audio.ts",
+    "fetch:kenney": "bun scripts/fetch-kenney.ts"
   },
   "sideEffects": [
     "*.css"

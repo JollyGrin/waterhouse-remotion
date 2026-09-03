@@ -486,7 +486,7 @@ const PullUpAudio: React.FC = () => {
       <Audio src={sfx("presence")} volume={(f) => roomLevel(f)} />
 
       {/* Impact under the headline/ask punch - fires on every loop. */}
-      <Sequence durationInFrames={15}>
+      <Sequence durationInFrames={17}>
         <Audio src={sfx("thud")} />
       </Sequence>
 
@@ -512,7 +512,7 @@ const PullUpAudio: React.FC = () => {
 
       {/* Chat ticks - your message, then the two trailing ones. */}
       {CHAT_IN_FRAMES.map((f, i) => (
-        <Sequence key={i} from={f} durationInFrames={9}>
+        <Sequence key={i} from={f} durationInFrames={10}>
           <Audio src={sfx("msg")} />
         </Sequence>
       ))}

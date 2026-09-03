@@ -1,0 +1,59 @@
+# PullUp soundtrack — sources and licences
+
+Everything in this folder is license-free for commercial use with no
+attribution obligation. Credits are recorded here anyway.
+
+Rebuild with `bun run gen:audio`. Re-download the Kenney sources with
+`bun run fetch:kenney` (only needed to change which sounds are picked — the
+selected sources are committed under `kenney/`).
+
+## One-shots — Kenney, CC0
+
+Created and distributed by Kenney — <https://kenney.nl>. Licensed
+[Creative Commons Zero (CC0 1.0)](http://creativecommons.org/publicdomain/zero/1.0/):
+public domain, commercial use permitted, no attribution required. The pack
+licence texts are kept alongside the audio as `kenney/License-*.txt`.
+
+| Pack | Page | Source file | Used for |
+|---|---|---|---|
+| Impact Sounds | <https://kenney.nl/assets/impact-sounds> | `impactSoft_heavy_000.ogg` → `kenney/impact-soft-heavy.ogg` | `thud.wav` — the frame-0 impact. Chosen for being soft and low: 48 dB more energy below 200 Hz than above 2 kHz, with no metallic ring. |
+| Interface Sounds | <https://kenney.nl/assets/interface-sounds> | `pluck_001.ogg` → `kenney/pluck.ogg` | `pop-you.wav`, and `pop-friend-0..5.wav` pitched down one semitone at a time (`asetrate` + `aresample`) so the friends stay related to the sound you made. |
+| Interface Sounds | <https://kenney.nl/assets/interface-sounds> | `tick_001.ogg` → `kenney/tick.ogg` | `click.wav` — the viewer-counter increment. 23 ms, high-biased. |
+| Interface Sounds | <https://kenney.nl/assets/interface-sounds> | `confirmation_001.ogg` → `kenney/confirmation.ogg` | `msg.wav` — the chat bubble tick. |
+
+UI Audio (<https://kenney.nl/assets/ui-audio>) is downloaded by
+`fetch-kenney.ts` and was surveyed, but nothing from it beat the Interface
+Sounds picks, so no file from it is committed.
+
+Each source is converted to 48 kHz mono, has its leading silence trimmed
+(`silenceremove`) so timing stays tight, and is peak-normalised.
+
+## Beds — synthesised, no third-party material
+
+Generated procedurally by `scripts/gen-audio.ts` from ffmpeg primitives
+(`anoisesrc`, `afade`, `lowpass`, `highpass`, `bandpass`, `volume`) with fixed
+seeds. No copyrightable input, nothing downloaded.
+
+- **`bed.wav`** — brown noise lowpassed to ~250 Hz, breathing ±2 dB on a 3–5 s
+  cycle, plus sparse vinyl-style grain (~3 scripted impulses per second, 5 ms
+  each, band-limited 400–2600 Hz). **No tonal component**: there is no
+  oscillator anywhere in the bed, because a sustained sine reads as a whine on
+  phone speakers.
+- **`presence.wav`** — four detuned noise bands across 300–3000 Hz, each with
+  its own seed and its own slow wander so they drift against one another. No
+  tremolo. Its volume is driven per-frame from the viewer count.
+- **`whoosh.wav`** — the loop-seam room-emptying sweep. Three staggered noise
+  bands, the top one leaving first, ending at digital silence. Kept
+  synthesised because the Kenney packs have no reversed whoosh.
+
+Both beds are exactly 480000 samples (300 frames at 30 fps) and are wrapped
+onto themselves with an equal-power crossfade, with a 40 ms fade at each edge
+so the loop seam does not click.
+
+### On the crowd murmur
+
+The brief's first choice for `presence.wav` was a real crowd/bar murmur from
+[pixabay.com](https://pixabay.com) under the Pixabay Content License.
+`pixabay.com` answers **HTTP 403** to a scripted fetch (bot protection), so the
+documented synthesised fallback is what ships. If a murmur is dropped in later,
+it must contain no music, and its source URL and licence belong in this file.

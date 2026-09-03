@@ -1,25 +1,32 @@
 #!/usr/bin/env bun
 /**
- * Generate the PullUp soundtrack procedurally with ffmpeg.
+ * Build the PullUp soundtrack.
  *
- *   bun scripts/gen-audio.ts
+ *   bun run gen:audio
  *
- * Everything is synthesised from ffmpeg primitives (aevalsrc / anoisesrc +
- * afade / lowpass / highpass / bandpass / volume) with fixed noise seeds, so
- * the output is deterministic, license-free and reproducible. No downloads.
+ * Two sources, both license-free:
  *
- * The soundtrack is ENVIRONMENTAL on purpose: the same clip is rendered for
- * every artist and every genre, so there is no key, no melody, no tempo and
- * no percussion that could clash with a DJ's set. Room tone and weight only.
+ *  - The beds are synthesised from ffmpeg primitives (anoisesrc / aevalsrc +
+ *    afade / lowpass / highpass / bandpass / volume) with fixed noise seeds,
+ *    so they are deterministic and reproducible.
+ *  - The one-shots come from Kenney's CC0 packs, committed under
+ *    public/audio/pullup/kenney/ (see CREDITS.md, and scripts/fetch-kenney.ts
+ *    to re-download them).
  *
- * Output: public/audio/pullup/*.wav (48kHz mono pcm_s16le). The wavs are
- * committed, so rendering never depends on running this script.
+ * The soundtrack is ENVIRONMENTAL on purpose: the same clip ships for every
+ * artist and every genre, so the bed carries NO tonal component at all - a
+ * sustained sine reads as a whine on phone speakers and on headphones.
+ * Texture and weight only.
+ *
+ * Output: public/audio/pullup/*.wav (48kHz mono pcm_s16le), committed, so
+ * rendering never depends on running this script.
  */
 
 import { execSync } from "child_process";
-import { mkdirSync, rmSync } from "fs";
+import { existsSync, mkdirSync, rmSync } from "fs";
 
 const OUT_DIR = "public/audio/pullup";
+const KENNEY_DIR = "public/audio/pullup/kenney";
 const TMP_DIR = "/tmp/waterhouse-pullup-audio";
 const SR = 48000;
 
@@ -29,7 +36,7 @@ const CLIP_SECONDS = 10;
 const WRAP = 1;
 // Fade at each edge of a looping bed, in seconds. The rendered AAC track is
 // ~48ms longer than the video and carries a decoder priming offset, so the
-// exact boundary sample is not under our control; fading the bed to silence
+// exact boundary sample is not ours to control; fading the bed to silence
 // across 40ms at both edges makes the whole boundary region quiet, which is
 // what actually removes the click. 40ms of room tone ramping is well under
 // the ear's level-integration time and cannot be heard as a dip.
@@ -48,18 +55,31 @@ function ff(args: string): void {
   });
 }
 
-/**
- * Phase term for a linear frequency sweep from f0 to f1 over `dur` seconds,
- * holding f1 afterwards so the oscillator never runs backwards through zero.
- */
-function sweepPhase(f0: number, f1: number, dur: number): string {
-  const u = `min(t\\,${dur})`;
-  const k = (f1 - f0) / (2 * dur);
-  return `${f0}*${u}+(${k})*${u}*${u}+${f1}*(t-${u})`;
+/** Deterministic RNG (mulberry32), so the grain lands the same way every run. */
+function makeRng(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
-function sweep(f0: number, f1: number, dur: number, decay: number): string {
-  return `exp(-t*${decay})*sin(2*PI*(${sweepPhase(f0, f1, dur)}))`;
+/**
+ * A slow amplitude wander, +/- `depthDb`, built from low-frequency sines whose
+ * periods all divide the clip exactly - so the wander itself loops. Nothing
+ * here is audible as pitch: it only moves the level of a noise band.
+ */
+function wander(
+  depthDb: number,
+  parts: Array<[number, number, number]>,
+): string {
+  const expr = parts
+    .map(([hz, weight, phase]) => `${weight}*sin(2*PI*${hz}*t+${phase})`)
+    .join("+");
+  return `volume=volume='pow(10\\,${(depthDb / 20).toFixed(4)}*(${expr}))':eval=frame`;
 }
 
 /** Peak-normalise a file to `targetDb` dBFS. */
@@ -71,8 +91,7 @@ function normalizePeak(file: string, targetDb: number): number {
   if (!m) {
     throw new Error(`could not read peak level of ${file}`);
   }
-  const peak = parseFloat(m[1]);
-  const gain = targetDb - peak;
+  const gain = targetDb - parseFloat(m[1]);
   ff(
     `-i ${file} -af "volume=${gain.toFixed(3)}dB" -c:a pcm_s16le -ar ${SR} -ac 1 ${file}.norm.wav`,
   );
@@ -82,139 +101,227 @@ function normalizePeak(file: string, targetDb: number): number {
 }
 
 /**
- * Make a noise-based bed loop seamlessly. Renders `CLIP_SECONDS + WRAP`
- * seconds, then folds the overhanging tail back over the head with an
- * equal-power crossfade. The result is exactly CLIP_SECONDS long and its
- * last sample runs continuously into its first.
+ * Make a noise bed loop seamlessly: render CLIP_SECONDS + WRAP, then fold the
+ * overhanging tail back over the head with an equal-power crossfade. The
+ * result is exactly CLIP_SECONDS long and runs continuously into itself.
  */
 function wrapLoop(src: string, dst: string): void {
-  const head = WRAP;
-  const tail = CLIP_SECONDS;
   ff(
     `-i ${src} -filter_complex "` +
-      `[0:a]atrim=0:${head},asetpts=PTS-STARTPTS,afade=t=in:st=0:d=${head}:curve=qsin[a];` +
-      `[0:a]atrim=${tail}:${tail + head},asetpts=PTS-STARTPTS,afade=t=out:st=0:d=${head}:curve=qsin[b];` +
+      `[0:a]atrim=0:${WRAP},asetpts=PTS-STARTPTS,afade=t=in:st=0:d=${WRAP}:curve=qsin[a];` +
+      `[0:a]atrim=${CLIP_SECONDS}:${CLIP_SECONDS + WRAP},asetpts=PTS-STARTPTS,afade=t=out:st=0:d=${WRAP}:curve=qsin[b];` +
       `[a][b]amix=inputs=2:normalize=0[x];` +
-      `[0:a]atrim=${head}:${tail},asetpts=PTS-STARTPTS[y];` +
+      `[0:a]atrim=${WRAP}:${CLIP_SECONDS},asetpts=PTS-STARTPTS[y];` +
       `[x][y]concat=n=2:v=0:a=1,` +
-      // 4ms of fade at each edge. The AAC decoder forces the first decoded
-      // sample to zero, so without this the bed's non-zero final sample
-      // leaves a ~-36 dBFS step at the wrap. A 4ms dip is far below the
-      // ear's level-integration time; a one-sample step is not.
       `afade=t=in:st=0:d=${EDGE_FADE},afade=t=out:st=${CLIP_SECONDS - EDGE_FADE}:d=${EDGE_FADE}[out]" ` +
       `-map "[out]" -c:a pcm_s16le -ar ${SR} -ac 1 -t ${CLIP_SECONDS} ${dst}`,
   );
 }
 
-// --- BED: sub drone + dark room tone -------------------------------------
-//
-// Both drone partials are at integer frequencies, so they complete a whole
-// number of cycles in 10s and loop with no discontinuity. The brown noise is
-// wrapped with the crossfade above.
+// --- BED: texture only, no tonal component --------------------------------
+
+/**
+ * Sparse vinyl-style grain: weight without pitch.
+ *
+ * Gating a noise source was the obvious approach and it does not work - a
+ * hard agate still yields 25-50 bursts/s however high the threshold, which
+ * reads as a noise floor rather than as crackle. Scripting the impulses is
+ * the only way to actually land at a few per second.
+ */
+function buildGrain(dur: number, perSecond: number): string {
+  const variants = 4;
+  for (let v = 0; v < variants; v++) {
+    ff(
+      `-f lavfi -i "anoisesrc=c=white:r=${SR}:d=0.005:a=0.9:seed=${9100 + v}" ` +
+        `-af "highpass=f=400,lowpass=f=2600,afade=t=out:st=0:d=0.005:curve=exp" ` +
+        `-c:a pcm_s16le -ar ${SR} -ac 1 ${TMP_DIR}/grain-v${v}.wav`,
+    );
+  }
+
+  const rng = makeRng(4242);
+  const hits: Array<{ v: number; ms: number }> = [];
+  // Irregular spacing, so the grain never sounds metronomic.
+  let t = 0.05;
+  while (t < dur - 0.05) {
+    hits.push({ v: Math.floor(rng() * variants), ms: Math.round(t * 1000) });
+    // mean of (0.45 + U*1.25) is 1.075, so divide it out to hit perSecond.
+    t += (0.45 + rng() * 1.25) / (1.075 * perSecond);
+  }
+
+  const inputs: string[] = [];
+  for (let v = 0; v < variants; v++) {
+    inputs.push(`-i ${TMP_DIR}/grain-v${v}.wav`);
+  }
+
+  const useCount = [0, 0, 0, 0];
+  for (const h of hits) useCount[h.v]++;
+
+  const parts: string[] = [];
+  for (let v = 0; v < variants; v++) {
+    if (useCount[v] === 0) continue;
+    const outs: string[] = [];
+    for (let k = 0; k < useCount[v]; k++) outs.push(`[s${v}_${k}]`);
+    parts.push(
+      useCount[v] === 1
+        ? `[${v}:a]anull${outs[0]}`
+        : `[${v}:a]asplit=${useCount[v]}${outs.join("")}`,
+    );
+  }
+
+  const seen = [0, 0, 0, 0];
+  const labels: string[] = [];
+  hits.forEach((h, i) => {
+    const k = seen[h.v]++;
+    // Vary each hit's level a little so the grain is not a repeating stamp.
+    const g = (0.45 + ((i * 7919) % 100) / 180).toFixed(3);
+    parts.push(`[s${h.v}_${k}]adelay=${h.ms},volume=${g}[d${i}]`);
+    labels.push(`[d${i}]`);
+  });
+  parts.push(
+    `${labels.join("")}amix=inputs=${labels.length}:normalize=0,apad[gout]`,
+  );
+
+  ff(
+    `${inputs.join(" ")} -filter_complex "${parts.join(";")}" ` +
+      `-map "[gout]" -t ${dur} -c:a pcm_s16le -ar ${SR} -ac 1 ${TMP_DIR}/grain.wav`,
+  );
+  console.log(
+    `                 ${hits.length} grain impulses over ${dur}s (${(hits.length / dur).toFixed(1)}/s)`,
+  );
+  return `${TMP_DIR}/grain.wav`;
+}
+
 function buildBed(): void {
   const dur = CLIP_SECONDS + WRAP;
 
-  // 47Hz and 52Hz beat against each other at 5Hz, which repeats every 0.2s -
-  // an exact divisor of the clip, so the beat pattern loops too.
-  ff(
-    `-f lavfi -i "aevalsrc='0.62*sin(2*PI*47*t)+0.38*sin(2*PI*52*t)':s=${SR}:d=${dur}:c=mono" ` +
-      `-af "lowpass=f=120" -c:a pcm_s16le -ar ${SR} -ac 1 ${TMP_DIR}/bed-sub.wav`,
-  );
-
+  // Room tone: brown noise under ~250Hz, breathing +/-2dB on a 3-5s cycle so
+  // it moves like a room rather than sitting there like a fan.
   ff(
     `-f lavfi -i "anoisesrc=c=brown:r=${SR}:d=${dur}:a=0.9:seed=1701" ` +
-      `-af "lowpass=f=300,lowpass=f=300,highpass=f=25" ` +
-      `-c:a pcm_s16le -ar ${SR} -ac 1 ${TMP_DIR}/bed-noise.wav`,
+      `-af "lowpass=f=250,lowpass=f=250,highpass=f=22,` +
+      wander(2, [
+        [0.2, 0.5, 0],
+        [0.3, 0.3, 1.7],
+        [0.5, 0.2, 3.1],
+      ]) +
+      `" -c:a pcm_s16le -ar ${SR} -ac 1 ${TMP_DIR}/bed-tone.wav`,
   );
 
+  const grain = buildGrain(dur, 3);
+
   ff(
-    `-i ${TMP_DIR}/bed-sub.wav -i ${TMP_DIR}/bed-noise.wav ` +
-      `-filter_complex "[0:a]volume=0.85[s];[1:a]volume=0.55[n];[s][n]amix=inputs=2:normalize=0[out]" ` +
+    `-i ${TMP_DIR}/bed-tone.wav -i ${grain} ` +
+      `-filter_complex "[0:a]volume=1.0[t];[1:a]volume=0.18[g];[t][g]amix=inputs=2:normalize=0[out]" ` +
       `-map "[out]" -c:a pcm_s16le -ar ${SR} -ac 1 ${TMP_DIR}/bed-mix.wav`,
   );
 
   wrapLoop(`${TMP_DIR}/bed-mix.wav`, `${OUT_DIR}/bed.wav`);
 }
 
-// --- PRESENCE: the room getting warmer as people arrive -------------------
+// --- PRESENCE: people in a room, rising with the viewer count --------------
 //
 // Constant level on disk; the composition drives its volume from the viewer
-// count schedule. Band-passed noise with a slow tremolo so it breathes; the
-// tremolo runs at 0.3Hz, i.e. exactly 3 cycles per clip, so it loops.
+// count schedule. Four detuned noise bands across 300-3000Hz, each with its
+// own seed and its own slow wander, so they drift against each other the way
+// a room of voices does. No tremolo, no tone.
+//
+// A real crowd murmur from Pixabay was the brief's first choice; pixabay.com
+// answers 403 to a scripted fetch, so this is the documented fallback.
 function buildPresence(): void {
   const dur = CLIP_SECONDS + WRAP;
+  const bands: Array<{
+    seed: number;
+    f: number;
+    w: number;
+    wob: Array<[number, number, number]>;
+    gain: number;
+  }> = [
+    {
+      seed: 2911,
+      f: 420,
+      w: 280,
+      wob: [
+        [0.2, 0.7, 0.0],
+        [0.5, 0.3, 2.2],
+      ],
+      gain: 1.0,
+    },
+    {
+      seed: 3313,
+      f: 900,
+      w: 520,
+      wob: [
+        [0.3, 0.6, 1.1],
+        [0.1, 0.4, 4.0],
+      ],
+      gain: 0.9,
+    },
+    {
+      seed: 4177,
+      f: 1600,
+      w: 800,
+      wob: [
+        [0.1, 0.5, 2.7],
+        [0.4, 0.5, 0.6],
+      ],
+      gain: 0.6,
+    },
+    {
+      seed: 5233,
+      f: 2600,
+      w: 900,
+      wob: [
+        [0.4, 0.6, 3.4],
+        [0.2, 0.4, 1.4],
+      ],
+      gain: 0.35,
+    },
+  ];
+
+  const inputs: string[] = [];
+  const parts: string[] = [];
+  const labels: string[] = [];
+  bands.forEach((b, i) => {
+    ff(
+      `-f lavfi -i "anoisesrc=c=pink:r=${SR}:d=${dur}:a=0.9:seed=${b.seed}" ` +
+        `-af "bandpass=f=${b.f}:w=${b.w},bandpass=f=${b.f}:w=${b.w},` +
+        wander(3, b.wob) +
+        `,volume=24dB" -c:a pcm_s16le -ar ${SR} -ac 1 ${TMP_DIR}/pres-${i}.wav`,
+    );
+    inputs.push(`-i ${TMP_DIR}/pres-${i}.wav`);
+    parts.push(`[${i}:a]volume=${b.gain}[b${i}]`);
+    labels.push(`[b${i}]`);
+  });
+
   ff(
-    `-f lavfi -i "anoisesrc=c=pink:r=${SR}:d=${dur}:a=0.9:seed=2911" ` +
-      `-af "highpass=f=200,lowpass=f=2000,bandpass=f=700:w=1400,tremolo=f=0.3:d=0.35,volume=24dB" ` +
-      `-c:a pcm_s16le -ar ${SR} -ac 1 ${TMP_DIR}/presence-raw.wav`,
+    `${inputs.join(" ")} -filter_complex "${parts.join(";")};` +
+      `${labels.join("")}amix=inputs=${labels.length}:normalize=0,highpass=f=300,lowpass=f=3000[out]" ` +
+      `-map "[out]" -c:a pcm_s16le -ar ${SR} -ac 1 ${TMP_DIR}/presence-raw.wav`,
   );
   wrapLoop(`${TMP_DIR}/presence-raw.wav`, `${OUT_DIR}/presence.wav`);
 }
 
-// --- SFX ------------------------------------------------------------------
+// --- ONE-SHOTS from the Kenney CC0 packs ----------------------------------
 
-/** Frame 0 impact: 120 -> 40Hz sine drop plus a soft noise burst. */
-function buildThud(): void {
+/** Convert a pack sound to mono 48k and trim the silence off its front. */
+function fromKenney(src: string, dst: string, extra = ""): void {
+  const chain = [
+    "silenceremove=start_periods=1:start_threshold=-55dB:start_silence=0:detection=peak",
+    extra,
+    "afade=t=in:st=0:d=0.002",
+  ]
+    .filter(Boolean)
+    .join(",");
   ff(
-    `-f lavfi -i "aevalsrc='${sweep(120, 40, 0.15, 16)}':s=${SR}:d=0.45:c=mono" ` +
-      `-c:a pcm_s16le -ar ${SR} -ac 1 ${TMP_DIR}/thud-sine.wav`,
-  );
-  ff(
-    `-f lavfi -i "anoisesrc=c=brown:r=${SR}:d=0.2:a=0.9:seed=3307" ` +
-      `-af "lowpass=f=900,afade=t=out:st=0:d=0.18:curve=exp,volume=0.5" ` +
-      `-c:a pcm_s16le -ar ${SR} -ac 1 ${TMP_DIR}/thud-noise.wav`,
-  );
-  ff(
-    `-i ${TMP_DIR}/thud-sine.wav -i ${TMP_DIR}/thud-noise.wav ` +
-      `-filter_complex "[0:a][1:a]amix=inputs=2:normalize=0,afade=t=out:st=0.4:d=0.05[out]" ` +
-      `-map "[out]" -c:a pcm_s16le -ar ${SR} -ac 1 ${OUT_DIR}/thud.wav`,
-  );
-}
-
-/** A short blip with a pitch drop. YOU gets the brightest one. */
-function buildPop(name: string, f0: number, decay: number): void {
-  const f1 = f0 * 0.56;
-  ff(
-    `-f lavfi -i "aevalsrc='${sweep(f0, f1, 0.07, decay)}':s=${SR}:d=0.22:c=mono" ` +
-      `-af "highpass=f=180,lowpass=f=4000,afade=t=out:st=0.18:d=0.04" ` +
-      `-c:a pcm_s16le -ar ${SR} -ac 1 ${OUT_DIR}/${name}.wav`,
-  );
-}
-
-/** Viewer counter increment: a tiny click, barely there. */
-function buildClick(): void {
-  ff(
-    `-f lavfi -i "anoisesrc=c=white:r=${SR}:d=0.03:a=0.9:seed=5501" ` +
-      `-af "highpass=f=1800,lowpass=f=6000,afade=t=out:st=0:d=0.028:curve=exp" ` +
-      `-c:a pcm_s16le -ar ${SR} -ac 1 ${OUT_DIR}/click.wav`,
-  );
-}
-
-/** Chat bubble: a soft two-tone tick, like a muted notification. */
-function buildMsg(): void {
-  // Soft attack (no click) then a gentle decay, twice, a semitone-free
-  // interval apart so it reads as a UI tick rather than a musical note.
-  const tone = (f: number) => `(1-exp(-t*260))*exp(-t*26)*sin(2*PI*${f}*t)`;
-  ff(
-    `-f lavfi -i "aevalsrc='${tone(640)}':s=${SR}:d=0.09:c=mono" ` +
-      `-c:a pcm_s16le -ar ${SR} -ac 1 ${TMP_DIR}/msg-a.wav`,
-  );
-  ff(
-    `-f lavfi -i "aevalsrc='${tone(880)}':s=${SR}:d=0.16:c=mono" ` +
-      `-c:a pcm_s16le -ar ${SR} -ac 1 ${TMP_DIR}/msg-b.wav`,
-  );
-  ff(
-    `-i ${TMP_DIR}/msg-a.wav -i ${TMP_DIR}/msg-b.wav ` +
-      `-filter_complex "[0:a][1:a]concat=n=2:v=0:a=1,lowpass=f=3200,volume=0.8[out]" ` +
-      `-map "[out]" -c:a pcm_s16le -ar ${SR} -ac 1 ${OUT_DIR}/msg.wav`,
+    `-i ${KENNEY_DIR}/${src} -af "${chain}" -c:a pcm_s16le -ar ${SR} -ac 1 ${OUT_DIR}/${dst}.wav`,
   );
 }
 
 /**
  * Loop seam: the room emptying. ffmpeg's lowpass has a fixed cutoff, so the
  * downward sweep is built by layering three bands whose fades are staggered -
- * the top band leaves first, the bottom band last. Ends at digital silence
- * so the wrap point is clean.
+ * the top band leaves first, the bottom band last. Kenney has no reversed
+ * whoosh, so this one stays synthesised. Ends at digital silence.
  */
 function buildWhoosh(): void {
   const bands: Array<[string, string, number, number]> = [
@@ -239,22 +346,13 @@ function buildWhoosh(): void {
 
 // --- Level plan -----------------------------------------------------------
 //
-// SFX peaks anchor the mix; the bed sits ~28dB under them, as specified.
-// MASTER_TRIM is applied uniformly to every target, so it moves the whole mix
-// without disturbing any relationship inside it. +2.5dB puts the loudest hit
-// (the thud) at -0.5 dBFS, which is all the headroom there is to take.
+// Operator-chosen "one step up" loudness: ~-17.5 LUFS integrated.
 //
-// Raising the mix further means raising the bed and presence *relative* to
-// the SFX, which costs the "felt more than heard" character. Measured
-// integrated loudness for the alternatives, if that trade is ever wanted:
-//
-//   bed/presence peak   integrated   bed below SFX peak
-//   -31 / -17 (this)    -24.3 LUFS   28 dB
-//   -25 / -11           -20.8 LUFS   22 dB
-//   -21 /  -7           -17.5 LUFS   18 dB
-//   -18 /  -4           -14.8 LUFS   15 dB
-const MASTER_TRIM = 2.5;
-
+// That row was measured with the old sine-plus-noise bed at -21 / -7 dBFS
+// peak. This bed is noise only, which has a much higher crest factor, so the
+// same peak now measures ~2.7 LU quieter. -18 / -4 is what actually lands on
+// -17.6 LUFS. Raising or lowering these two together is the one knob that
+// trades integrated loudness against how far the bed sits under the SFX.
 const PEAKS: Record<string, number> = {
   thud: -3,
   "pop-you": -6,
@@ -267,8 +365,8 @@ const PEAKS: Record<string, number> = {
   click: -22,
   msg: -13,
   whoosh: -11,
-  bed: -31,
-  presence: -17,
+  bed: -18,
+  presence: -4,
 };
 
 function main() {
@@ -278,55 +376,68 @@ function main() {
     console.error("ffmpeg is required and was not found on PATH.");
     process.exit(1);
   }
+  if (!existsSync(`${KENNEY_DIR}/pluck.ogg`)) {
+    console.error(
+      `Missing Kenney sources in ${KENNEY_DIR}. Run: bun run fetch:kenney`,
+    );
+    process.exit(1);
+  }
 
   rmSync(TMP_DIR, { recursive: true, force: true });
   mkdirSync(TMP_DIR, { recursive: true });
   mkdirSync(OUT_DIR, { recursive: true });
 
-  console.log("Generating PullUp soundtrack (procedural, ffmpeg only)\n");
+  console.log("Generating PullUp soundtrack\n");
 
-  console.log("  bed.wav        sub drone 47/52Hz + brown room tone");
+  console.log(
+    "  bed.wav        brown room tone <250Hz + sparse grain, no tone",
+  );
   buildBed();
 
-  console.log("  presence.wav   band-passed room presence, breathing");
+  console.log("  presence.wav   four detuned noise bands, 300-3000Hz");
   buildPresence();
 
-  console.log("  thud.wav       120->40Hz impact + noise burst");
-  buildThud();
+  console.log("  thud.wav       Kenney impactSoft_heavy");
+  fromKenney("impact-soft-heavy.ogg", "thud", "lowpass=f=1200");
 
-  console.log("  pop-you.wav    bright blip, 900->504Hz");
-  buildPop("pop-you", 900, 34);
+  console.log("  pop-you.wav    Kenney pluck");
+  fromKenney("pluck.ogg", "pop-you");
 
-  // Each friend lands a little lower than the one before.
+  // The friends get the same pluck, stepped down a semitone at a time, so
+  // they stay obviously related to the sound YOU made.
   for (let i = 0; i < 6; i++) {
-    const f0 = Math.round(820 * Math.pow(0.93, i));
-    console.log(`  pop-friend-${i}.wav  blip, ${f0}Hz`);
-    buildPop(`pop-friend-${i}`, f0, 36);
+    const ratio = Math.pow(2, -(i + 1) / 12);
+    console.log(
+      `  pop-friend-${i}.wav  Kenney pluck, ${i + 1} semitone(s) down`,
+    );
+    fromKenney(
+      "pluck.ogg",
+      `pop-friend-${i}`,
+      `asetrate=${Math.round(SR * ratio)},aresample=${SR}`,
+    );
   }
 
-  console.log("  click.wav      counter tick");
-  buildClick();
+  console.log("  click.wav      Kenney tick");
+  fromKenney("tick.ogg", "click");
 
-  console.log("  msg.wav        two-tone chat tick");
-  buildMsg();
+  console.log("  msg.wav        Kenney confirmation");
+  fromKenney("confirmation.ogg", "msg");
 
-  console.log("  whoosh.wav     room emptying, downward band sweep");
+  console.log("  whoosh.wav     synthesised downward band sweep");
   buildWhoosh();
 
   console.log("\nNormalising peaks:");
-  const names = Object.keys(PEAKS);
-  for (const name of names) {
-    const target = PEAKS[name] + MASTER_TRIM;
-    const gain = normalizePeak(`${OUT_DIR}/${name}.wav`, target);
+  for (const name of Object.keys(PEAKS)) {
+    const gain = normalizePeak(`${OUT_DIR}/${name}.wav`, PEAKS[name]);
     let label = name;
     while (label.length < 14) label += " ";
     console.log(
-      `  ${label} -> ${target.toFixed(1)} dBFS (${gain >= 0 ? "+" : ""}${gain.toFixed(1)} dB)`,
+      `  ${label} -> ${PEAKS[name].toFixed(1)} dBFS (${gain >= 0 ? "+" : ""}${gain.toFixed(1)} dB)`,
     );
   }
 
   rmSync(TMP_DIR, { recursive: true, force: true });
-  console.log(`\nDone. ${names.length} files in ${OUT_DIR}/`);
+  console.log(`\nDone. ${Object.keys(PEAKS).length} files in ${OUT_DIR}/`);
 }
 
 main();
