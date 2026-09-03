@@ -27,6 +27,7 @@ import { existsSync, mkdirSync, rmSync } from "fs";
 
 const OUT_DIR = "public/audio/pullup";
 const KENNEY_DIR = "public/audio/pullup/kenney";
+const PIXABAY_DIR = "public/audio/pullup/pixabay";
 const TMP_DIR = "/tmp/waterhouse-pullup-audio";
 const SR = 48000;
 
@@ -82,6 +83,52 @@ function wander(
   return `volume=volume='pow(10\\,${(depthDb / 20).toFixed(4)}*(${expr}))':eval=frame`;
 }
 
+/**
+ * Peak-normalise on a WINDOW of the file rather than the whole thing, then
+ * apply that gain everywhere. The beds need this: B and C build a riser that
+ * is by design the loudest thing in them, so normalising on the global peak
+ * pushed their ambient body 5-6dB below A's and made all three sound alike
+ * again. Levelling on the quiet body instead puts every variant's ambience
+ * at the same level and lets the riser rise above it, which is the point.
+ */
+function normalizeWindowPeak(
+  file: string,
+  targetDb: number,
+  from: number,
+  to: number,
+): number {
+  const probe = sh(
+    `ffmpeg -hide_banner -ss ${from} -t ${to - from} -i ${file} -af volumedetect -f null - 2>&1 || true`,
+  );
+  const m = probe.match(/max_volume:\s*(-?[\d.]+) dB/);
+  if (!m) {
+    throw new Error(`could not read window peak of ${file}`);
+  }
+  let gain = targetDb - parseFloat(m[1]);
+
+  // Never let the riser peak clip once the body is at target.
+  const full = sh(
+    `ffmpeg -hide_banner -i ${file} -af volumedetect -f null - 2>&1 || true`,
+  );
+  const fm = full.match(/max_volume:\s*(-?[\d.]+) dB/);
+  if (fm) {
+    const ceiling = -0.5 - parseFloat(fm[1]);
+    if (gain > ceiling) {
+      console.log(
+        `  (${file.split("/").pop()}: capped at the -0.5 dBFS ceiling, ${(gain - ceiling).toFixed(1)} dB below body target)`,
+      );
+      gain = ceiling;
+    }
+  }
+
+  ff(
+    `-i ${file} -af "volume=${gain.toFixed(3)}dB" -c:a pcm_s16le -ar ${SR} -ac 1 ${file}.norm.wav`,
+  );
+  ff(`-i ${file}.norm.wav -c:a copy ${file}`);
+  rmSync(`${file}.norm.wav`, { force: true });
+  return gain;
+}
+
 /** Peak-normalise a file to `targetDb` dBFS. */
 function normalizePeak(file: string, targetDb: number): number {
   const probe = sh(
@@ -113,6 +160,12 @@ function wrapLoop(src: string, dst: string): void {
       `[a][b]amix=inputs=2:normalize=0[x];` +
       `[0:a]atrim=${WRAP}:${CLIP_SECONDS},asetpts=PTS-STARTPTS[y];` +
       `[x][y]concat=n=2:v=0:a=1,` +
+      // Real recordings are far peakier than the synthesised noise they
+      // replaced - rain droplets and crowd transients meant peak-matching
+      // left the beds 5-9 LU quieter than the loudness target. A gentle
+      // 3:1 tames the crest so the body can sit where it needs to without
+      // the peaks hitting the ceiling. Slow enough not to pump.
+      `acompressor=threshold=-26dB:ratio=3:attack=20:release=300,` +
       `afade=t=in:st=0:d=${EDGE_FADE},afade=t=out:st=${CLIP_SECONDS - EDGE_FADE}:d=${EDGE_FADE}[out]" ` +
       `-map "[out]" -c:a pcm_s16le -ar ${SR} -ac 1 -t ${CLIP_SECONDS} ${dst}`,
   );
@@ -234,75 +287,13 @@ function buildBed(): void {
 // A real crowd murmur from Pixabay was the brief's first choice; pixabay.com
 // answers 403 to a scripted fetch, so this is the documented fallback.
 function buildPresence(): void {
-  const dur = CLIP_SECONDS + WRAP;
-  const bands: Array<{
-    seed: number;
-    f: number;
-    w: number;
-    wob: Array<[number, number, number]>;
-    gain: number;
-  }> = [
-    {
-      seed: 2911,
-      f: 420,
-      w: 280,
-      wob: [
-        [0.2, 0.7, 0.0],
-        [0.5, 0.3, 2.2],
-      ],
-      gain: 1.0,
-    },
-    {
-      seed: 3313,
-      f: 900,
-      w: 520,
-      wob: [
-        [0.3, 0.6, 1.1],
-        [0.1, 0.4, 4.0],
-      ],
-      gain: 0.9,
-    },
-    {
-      seed: 4177,
-      f: 1600,
-      w: 800,
-      wob: [
-        [0.1, 0.5, 2.7],
-        [0.4, 0.5, 0.6],
-      ],
-      gain: 0.6,
-    },
-    {
-      seed: 5233,
-      f: 2600,
-      w: 900,
-      wob: [
-        [0.4, 0.6, 3.4],
-        [0.2, 0.4, 1.4],
-      ],
-      gain: 0.35,
-    },
-  ];
-
-  const inputs: string[] = [];
-  const parts: string[] = [];
-  const labels: string[] = [];
-  bands.forEach((b, i) => {
-    ff(
-      `-f lavfi -i "anoisesrc=c=pink:r=${SR}:d=${dur}:a=0.9:seed=${b.seed}" ` +
-        `-af "bandpass=f=${b.f}:w=${b.w},bandpass=f=${b.f}:w=${b.w},` +
-        wander(3, b.wob) +
-        `,volume=24dB" -c:a pcm_s16le -ar ${SR} -ac 1 ${TMP_DIR}/pres-${i}.wav`,
-    );
-    inputs.push(`-i ${TMP_DIR}/pres-${i}.wav`);
-    parts.push(`[${i}:a]volume=${b.gain}[b${i}]`);
-    labels.push(`[b${i}]`);
-  });
-
+  // The real pre-concert crowd, wrapped with the same equal-power crossfade
+  // as every other looping bed. Voices sit in 250Hz-1kHz; the highpass keeps
+  // the room rumble out of the way of the bed and the lowpass takes the hiss
+  // off the top so it sits behind the SFX.
   ff(
-    `${inputs.join(" ")} -filter_complex "${parts.join(";")};` +
-      `${labels.join("")}amix=inputs=${labels.length}:normalize=0,highpass=f=300,lowpass=f=3000[out]" ` +
-      `-map "[out]" -c:a pcm_s16le -ar ${SR} -ac 1 ${TMP_DIR}/presence-raw.wav`,
+    `-i ${px("crowd")} -af "highpass=f=140,lowpass=f=6000" ` +
+      `-c:a pcm_s16le -ar ${SR} -ac 1 ${TMP_DIR}/presence-raw.wav`,
   );
   wrapLoop(`${TMP_DIR}/presence-raw.wav`, `${OUT_DIR}/presence.wav`);
 }
@@ -373,6 +364,7 @@ const fall = (from: number, to: number) =>
 const windowEnv = (a: number, b: number, c: number, d: number) =>
   `min(${ramp(a, b)}${C}${fall(c, d)})`;
 const volExpr = (e: string) => `volume=volume='${e}':eval=frame`;
+const px = (n: string) => `${PIXABAY_DIR}/${n}.wav`;
 
 /** A band of noise with a level envelope, written to a temp file. */
 function noiseLayer(
@@ -420,40 +412,41 @@ function riserLayers(dur: number): string[] {
   );
 }
 
-/** Variant A: outside -> inside. Rain and city, ducking as the room fills. */
+/** A real recording with a level envelope, written to a temp file. */
+function realLayer(
+  name: string,
+  src: string,
+  filters: string,
+  env: string,
+  gain: number,
+): string {
+  const out = `${TMP_DIR}/${name}.wav`;
+  const chain = [filters, volExpr(env), `volume=${gain}`]
+    .filter(Boolean)
+    .join(",");
+  ff(`-i ${src} -af "${chain}" -c:a pcm_s16le -ar ${SR} -ac 1 ${out}`);
+  return out;
+}
+
+/**
+ * Variant A: outside -> inside.
+ *
+ * Real rain on a window and a distant urban wash. When YOU arrives at 2.5s
+ * the outside ducks 10dB and the crowd (the presence layer, driven by the
+ * viewer count) takes over; as the room empties the rain comes back, so the
+ * loop reads rain -> room -> rain.
+ */
 function buildBedA(): void {
   const dur = CLIP_SECONDS + WRAP;
-  // The outside world is present at both ends of the clip, so the loop is
-  // consistent: rain -> room -> rain.
-  const outside = `(1-0.8*${windowEnv(2.5, 3.5, 9.0, 9.8)})`;
-  const inside = `(0.12+0.88*${windowEnv(2.5, 3.5, 9.0, 9.8)})`;
+  const W = windowEnv(2.5, 3.5, 9.0, 9.8);
+  // 10dB duck: 10^(-10/20) = 0.316, so the floor is 1 - 0.684.
+  const outside = `(1-0.684*${W})`;
+  const inside = `(0.10+0.90*${W})`;
 
   const parts = [
-    // Rain on glass: fine high texture.
-    noiseLayer(
-      "a-rain",
-      7001,
-      dur,
-      `highpass=f=900,lowpass=f=9000,${wander(2, [
-        [0.3, 0.6, 0.4],
-        [0.5, 0.4, 2.0],
-      ])}`,
-      outside,
-      0.55,
-    ),
-    // Distant city at night: far traffic wash.
-    noiseLayer(
-      "a-city",
-      7103,
-      dur,
-      `lowpass=f=400,lowpass=f=400,${wander(3, [
-        [0.1, 0.7, 1.2],
-        [0.2, 0.3, 3.3],
-      ])}`,
-      outside,
-      1.0,
-    ),
-    // Inside: the warm room takes over once you are in it.
+    realLayer("a-rain", px("rain"), "highpass=f=160", outside, 1.0),
+    realLayer("a-city", px("city"), "lowpass=f=3000", outside, 0.5),
+    // A little warm room under the crowd once you are inside.
     noiseLayer(
       "a-room",
       1701,
@@ -461,27 +454,26 @@ function buildBedA(): void {
       `lowpass=f=250,lowpass=f=250,highpass=f=22,${wander(2, [
         [0.2, 0.5, 0],
         [0.3, 0.3, 1.7],
-        [0.5, 0.2, 3.1],
       ])}`,
       inside,
-      1.0,
+      1.6,
     ),
   ];
-  // Rain needs droplets, not just hiss.
-  const drops = buildGrain(dur, 9, "a-drops", 500, [1200, 7000]);
-  ff(
-    `-i ${drops} -af "${volExpr(outside)},volume=0.5" -c:a pcm_s16le -ar ${SR} -ac 1 ${TMP_DIR}/a-drops-env.wav`,
-  );
-  parts.push(`${TMP_DIR}/a-drops-env.wav`);
-
   mixTo(`${TMP_DIR}/bed-a-mix.wav`, parts);
   wrapLoop(`${TMP_DIR}/bed-a-mix.wav`, `${OUT_DIR}/bed-a.wav`);
 }
 
-/** Variant B: venue before the show. Crackle, PA power-up, riser into the hit. */
+/**
+ * Variant B: venue before the show.
+ *
+ * Real vinyl crackle over soft room tone, a non-tonal PA "power-up" opening
+ * under the ask block, and a riser from 7.5s into the seam whoosh so every
+ * loop builds and lands on the frame-0 impact.
+ */
 function buildBedB(): void {
   const dur = CLIP_SECONDS + WRAP;
   const parts = [
+    realLayer("b-crackle", px("crackle"), "highpass=f=200", "1", 1.0),
     noiseLayer(
       "b-room",
       1701,
@@ -489,20 +481,19 @@ function buildBedB(): void {
       `lowpass=f=250,lowpass=f=250,highpass=f=22,${wander(2, [
         [0.2, 0.5, 0],
         [0.3, 0.3, 1.7],
-        [0.5, 0.2, 3.1],
       ])}`,
       "1",
-      1.0,
+      0.7,
     ),
-    // PA power-up: bands opening bottom-up under the ask block, settling to
-    // the low hiss of a rig that is now switched on.
+    // PA power-up: bands opening bottom-up, settling to the hiss of a rig
+    // that is now switched on. Noise, so there is no pitch to clash with.
     noiseLayer(
       "b-pa-lo",
       6401,
       dur,
       "lowpass=f=500,highpass=f=70",
       `(0.10+0.90*${windowEnv(1.0, 2.1, 2.4, 3.4)})`,
-      0.55,
+      0.8,
     ),
     noiseLayer(
       "b-pa-mid",
@@ -510,7 +501,7 @@ function buildBedB(): void {
       dur,
       "bandpass=f=1100:w=1400",
       `(0.08+0.92*${windowEnv(1.4, 2.4, 2.6, 3.6)})`,
-      0.32,
+      0.5,
     ),
     noiseLayer(
       "b-pa-hi",
@@ -518,82 +509,71 @@ function buildBedB(): void {
       dur,
       "highpass=f=3000,lowpass=f=8000",
       `(0.06+0.94*${windowEnv(1.7, 2.5, 2.7, 3.6)})`,
-      0.18,
+      0.28,
     ),
     ...riserLayers(dur),
   ];
-  const crackle = buildGrain(dur, 6, "b-crackle", 400, [400, 2600]);
-  ff(
-    `-i ${crackle} -af "volume=0.5" -c:a pcm_s16le -ar ${SR} -ac 1 ${TMP_DIR}/b-crackle-env.wav`,
-  );
-  parts.push(`${TMP_DIR}/b-crackle-env.wav`);
-
   mixTo(`${TMP_DIR}/bed-b-mix.wav`, parts);
   wrapLoop(`${TMP_DIR}/bed-b-mix.wav`, `${OUT_DIR}/bed-b.wav`);
 }
 
-/** Variant C: cinematic weather. Thunder, wind gusts, the same riser. */
+/**
+ * Variant C: cinematic weather.
+ *
+ * Two placements of a real distant thunder rumble - one under the ask block
+ * at 1.0s, one under the riser at 7.4s - over a heavily attenuated wind bed
+ * (the source is hot: -14 dB RMS) plus the same riser.
+ */
 function buildBedC(): void {
   const dur = CLIP_SECONDS + WRAP;
 
-  // Distant thunder: lowpassed noise bursts at irregular intervals. No pitch.
-  const rng = makeRng(31337);
-  const hits: number[] = [];
-  let t = 0.6;
-  while (t < dur - 1.6) {
-    hits.push(Math.round(t * 1000));
-    t += 2.4 + rng() * 2.6;
-  }
-  ff(
-    `-f lavfi -i "anoisesrc=c=brown:r=${SR}:d=1.6:a=0.9:seed=8501" ` +
-      `-af "lowpass=f=120,lowpass=f=120,afade=t=in:st=0:d=0.25:curve=qsin,afade=t=out:st=0.35:d=1.25:curve=exp" ` +
-      `-c:a pcm_s16le -ar ${SR} -ac 1 ${TMP_DIR}/c-thunder-one.wav`,
-  );
-  const outs = hits.map((_, i) => `[s${i}]`);
+  const at = [1000, 7400];
   const chain = [
-    outs.length === 1
-      ? `[0:a]anull${outs[0]}`
-      : `[0:a]asplit=${outs.length}${outs.join("")}`,
-    ...hits.map(
-      (ms, i) =>
-        `[s${i}]adelay=${ms},volume=${(0.6 + ((i * 37) % 40) / 100).toFixed(2)}[d${i}]`,
+    `[0:a]asplit=${at.length}${at.map((_, i) => `[s${i}]`).join("")}`,
+    ...at.map(
+      (ms, i) => `[s${i}]adelay=${ms},volume=${i === 0 ? 0.7 : 1.0}[d${i}]`,
     ),
-    `${hits.map((_, i) => `[d${i}]`).join("")}amix=inputs=${hits.length}:normalize=0,apad[tout]`,
+    `${at.map((_, i) => `[d${i}]`).join("")}amix=inputs=${at.length}:normalize=0,apad[tout]`,
   ].join(";");
   ff(
-    `-i ${TMP_DIR}/c-thunder-one.wav -filter_complex "${chain}" ` +
-      `-map "[tout]" -t ${dur} -c:a pcm_s16le -ar ${SR} -ac 1 ${TMP_DIR}/c-thunder.wav`,
+    `-i ${px("thunder")} -filter_complex "${chain}" -map "[tout]" -t ${dur} ` +
+      `-c:a pcm_s16le -ar ${SR} -ac 1 ${TMP_DIR}/c-thunder.wav`,
   );
-  console.log(`                 ${hits.length} thunder rumbles over ${dur}s`);
 
   const parts = [
     `${TMP_DIR}/c-thunder.wav`,
-    // Wind: broad texture with deep, slow gusts.
-    noiseLayer(
-      "c-wind",
-      9001,
-      dur,
-      `bandpass=f=700:w=1600,${wander(6, [
-        [0.1, 0.6, 0.9],
-        [0.2, 0.25, 2.6],
-        [0.3, 0.15, 4.4],
-      ])}`,
-      "1",
-      0.8,
-    ),
-    noiseLayer(
-      "c-room",
-      1701,
-      dur,
-      `lowpass=f=250,lowpass=f=250,highpass=f=22`,
-      "1",
-      0.7,
-    ),
+    // Wind is the loudest source in the set by ~13dB, so it is pulled down
+    // hard and rolled off before it becomes a hiss over everything.
+    realLayer("c-wind", px("wind"), "lowpass=f=4000,highpass=f=120", "1", 0.16),
     ...riserLayers(dur),
   ];
 
   mixTo(`${TMP_DIR}/bed-c-mix.wav`, parts);
   wrapLoop(`${TMP_DIR}/bed-c-mix.wav`, `${OUT_DIR}/bed-c.wav`);
+}
+
+/**
+ * The Kenney impact is the right weight but its long ringing tail reads like
+ * a gong. Rebuild it as two layers: a full-band attack that dies by 100ms,
+ * and a lowpassed body faded out 80->180ms. Nothing above 200Hz survives
+ * past 100ms, and the whole thing is digitally silent from 180ms.
+ */
+function buildThud(): void {
+  const src = `${KENNEY_DIR}/impact-soft-heavy.ogg`;
+  const trim =
+    "silenceremove=start_periods=1:start_threshold=-55dB:start_silence=0:detection=peak";
+  ff(
+    `-i ${src} -af "${trim},lowpass=f=1200,afade=t=out:st=0.03:d=0.07" -t 0.18 ` +
+      `-c:a pcm_s16le -ar ${SR} -ac 1 ${TMP_DIR}/thud-attack.wav`,
+  );
+  ff(
+    `-i ${src} -af "${trim},lowpass=f=200,lowpass=f=200,afade=t=out:st=0.08:d=0.10" -t 0.18 ` +
+      `-c:a pcm_s16le -ar ${SR} -ac 1 ${TMP_DIR}/thud-body.wav`,
+  );
+  mixTo(`${OUT_DIR}/thud.wav`, [
+    `${TMP_DIR}/thud-attack.wav`,
+    `${TMP_DIR}/thud-body.wav`,
+  ]);
 }
 
 // --- Level plan -----------------------------------------------------------
@@ -606,22 +586,27 @@ function buildBedC(): void {
 // -17.6 LUFS. Raising or lowering these two together is the one knob that
 // trades integrated loudness against how far the bed sits under the SFX.
 const PEAKS: Record<string, number> = {
-  thud: -3,
-  "pop-you": -6,
-  "pop-friend-0": -9,
-  "pop-friend-1": -9.5,
-  "pop-friend-2": -10,
-  "pop-friend-3": -10.5,
-  "pop-friend-4": -11,
-  "pop-friend-5": -11.5,
-  click: -22,
-  msg: -13,
-  whoosh: -11,
-  bed: -18,
-  "bed-a": -18,
-  "bed-b": -18,
-  "bed-c": -18,
-  presence: -4,
+  // SFX anchor the mix at -1 dBFS. Remotion lays a mono source into stereo,
+  // which costs ~3dB, so -1 dBFS here renders at about -4 dBTP - under the
+  // -1 dBTP ceiling with room to spare.
+  thud: -1,
+  "pop-you": -4,
+  "pop-friend-0": -7,
+  "pop-friend-1": -7.5,
+  "pop-friend-2": -8,
+  "pop-friend-3": -8.5,
+  "pop-friend-4": -9,
+  "pop-friend-5": -9.5,
+  click: -20,
+  msg: -11,
+  whoosh: -9,
+  // Beds sit ~12dB under the SFX peaks, not ~28: buried beds are what made
+  // the three variants sound identical.
+  bed: -1,
+  "bed-a": -1,
+  "bed-b": -3.5,
+  "bed-c": -4,
+  presence: -1.5,
 };
 
 function main() {
@@ -661,8 +646,8 @@ function main() {
   console.log("  bed-c.wav      variant C: weather (thunder, wind, riser)");
   buildBedC();
 
-  console.log("  thud.wav       Kenney impactSoft_heavy");
-  fromKenney("impact-soft-heavy.ogg", "thud", "lowpass=f=1200");
+  console.log("  thud.wav       Kenney impactSoft_heavy, ring removed");
+  buildThud();
 
   console.log("  pop-you.wav    Kenney pluck");
   fromKenney("pluck.ogg", "pop-you");
@@ -692,7 +677,11 @@ function main() {
 
   console.log("\nNormalising peaks:");
   for (const name of Object.keys(PEAKS)) {
-    const gain = normalizePeak(`${OUT_DIR}/${name}.wav`, PEAKS[name]);
+    // Beds are levelled on their ambient body (1-7s), before any riser.
+    const isBed = name === "bed" || name.indexOf("bed-") === 0;
+    const gain = isBed
+      ? normalizeWindowPeak(`${OUT_DIR}/${name}.wav`, PEAKS[name], 1, 7)
+      : normalizePeak(`${OUT_DIR}/${name}.wav`, PEAKS[name]);
     let label = name;
     while (label.length < 14) label += " ";
     console.log(

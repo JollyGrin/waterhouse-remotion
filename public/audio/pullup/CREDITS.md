@@ -39,9 +39,10 @@ seeds. No copyrightable input, nothing downloaded.
   each, band-limited 400–2600 Hz). **No tonal component**: there is no
   oscillator anywhere in the bed, because a sustained sine reads as a whine on
   phone speakers.
-- **`presence.wav`** — four detuned noise bands across 300–3000 Hz, each with
-  its own seed and its own slow wander so they drift against one another. No
-  tremolo. Its volume is driven per-frame from the viewer count.
+- **`presence.wav`** — the real pre-concert crowd (`pixabay/crowd.wav`),
+  wrapped with an equal-power crossfade. Its volume is driven per-frame from
+  the viewer count. This replaced a synthesised four-band noise texture, which
+  was indistinguishable from room tone.
 - **`whoosh.wav`** — the loop-seam room-emptying sweep. Three staggered noise
   bands, the top one leaving first, ending at digital silence. Kept
   synthesised because the Kenney packs have no reversed whoosh.
@@ -58,18 +59,17 @@ They change nothing visual. All are synthesised, all obey the same rules as the
 base bed — no key, no melody, no tempo, no tonal drone — and all are wrapped
 and edge-faded identically.
 
-- **`bed-a.wav` — outside → inside.** Rain-on-glass texture (fine 900 Hz–9 kHz
-  noise plus ~9 droplet impulses/s) over a distant city wash (brown noise under
-  400 Hz with a slow wander). When YOU arrives at 2.5 s the outside layer ducks
-  ~18 dB over one second and the warm inside room takes over; at 9.0–9.8 s the
-  room empties and the rain returns, so the loop reads rain → room → rain.
-- **`bed-b.wav` — venue before the show.** Vinyl crackle (~6/s), soft room
-  tone, a PA "power-up" from 1.0–2.5 s under the ask block (three noise bands
-  opening bottom-up, settling to the hiss of a rig that is now switched on),
-  and a riser from 7.5 s.
-- **`bed-c.wav` — cinematic weather.** Three distant thunder rumbles at
-  irregular intervals (brown noise bursts lowpassed to 120 Hz, no pitch), a
-  wind texture with ±6 dB slow gusts, and the same riser.
+- **`bed-a.wav` — outside → inside.** Real rain on a window plus a distant
+  urban wash. When YOU arrives at 2.5 s the outside ducks 10 dB and the crowd
+  takes over; at 9.0–9.8 s the room empties and the rain returns, so the loop
+  reads rain → room → rain.
+- **`bed-b.wav` — venue before the show.** Real vinyl crackle over soft room
+  tone, a non-tonal PA "power-up" from 1.0–2.5 s under the ask block (three
+  noise bands opening bottom-up), and a riser from 7.5 s.
+- **`bed-c.wav` — cinematic weather.** A real distant thunder rumble placed
+  twice — under the ask at 1.0 s and under the riser at 7.4 s — over a heavily
+  attenuated wind bed (the source is the loudest in the set by ~13 dB), plus
+  the same riser.
 
 The **riser** in B and C is three noise bands fading in bottom-up across
 7.5–9.2 s, handing off to the seam whoosh so each loop builds into the frame-0
@@ -79,30 +79,54 @@ into the seam, which is inaudible. It now climbs about 9 dB (−38 dBFS at 7.0 s
 to −29 dBFS at 8.4–9.0 s) before handing off, which is what makes the build
 read.
 
-### On real recordings
+## Recordings — Pixabay Content License
 
-The brief asked for real recordings from [pixabay.com](https://pixabay.com)
-under the Pixabay Content License — a crowd/bar murmur for `presence.wav`, and
-rain, city and thunder for the variants.
+Fetched by the operator through a browser and committed under `pixabay/`.
+The **Pixabay Content License** permits commercial use with **no attribution
+required**; credits are recorded here anyway. None of these clips contain
+music.
 
-**pixabay.com is not reachable from here.** Both the site and its CDN answer
-**HTTP 403** to a scripted fetch, with and without browser headers:
+| File | Title | Author | Source |
+|---|---|---|---|
+| `pixabay/rain.wav` | Gentle Rain on Window | Eryliaa | <https://pixabay.com/sound-effects/> (id 350529) |
+| `pixabay/city.wav` | Distant Urban Ambience | Alex_Jauk | <https://pixabay.com/sound-effects/> (id 201128) |
+| `pixabay/wind.wav` | Gentle Wind Sounds | DRAGON-STUDIO | <https://pixabay.com/sound-effects/> (id 584728) |
+| `pixabay/crackle.wav` | Vinyl Crackle (Real) | freesound_community / beautifuldaymonster1968 | <https://pixabay.com/sound-effects/film-special-effects-vinyl-crackle-real-69409/> |
+| `pixabay/crowd.wav` | Small Crowd pre-concert talking party bar walla | freesound_community / JohnsonBrandEditing | <https://pixabay.com/sound-effects/people-small-crowd-pre-concert-talking-party-bar-walla-talking-6044/> |
+| `pixabay/thunder.wav` | Distant Thunder | CapaholiczSFX | <https://pixabay.com/sound-effects/nature-distant-thunder-405128/> |
+
+Each source mp3 was cut to the section actually used, converted to 48 kHz mono
+`pcm_s16le`, and peak-normalised to −6 dBFS so the mix gains in
+`scripts/gen-audio.ts` are predictable. To reproduce from the original mp3s:
+
+| Output | Cut from | Start | Length |
+|---|---|---|---|
+| `rain.wav` | `rain-window.mp3` | 30 s | 11 s |
+| `city.wav` | `city-distant-urban.mp3` | 5 s | 11 s |
+| `wind.wav` | `wind-gentle.mp3` | 10 s | 11 s |
+| `crackle.wav` | `vinyl-crackle.mp3` | 3 s | 11 s |
+| `crowd.wav` | `crowd-preconcert.mp3` | 4 s | 11 s |
+| `thunder.wav` | `thunder-distant.mp3` | 4 s | 4 s |
 
 ```
-https://pixabay.com/sound-effects/search/...  -> 403
-https://cdn.pixabay.com                        -> 403
+ffmpeg -ss <start> -t <len> -i <src>.mp3 -ac 1 -ar 48000 -c:a pcm_s16le <out>.wav
+# then peak-normalise each to -6 dBFS
 ```
 
-Everything therefore ships synthesised. No substitute source was used: the
-point of Pixabay here was its no-attribution licence, and swapping in a
-differently-licensed library (Freesound is reachable, but much of it is CC-BY)
-would change the obligations without anyone asking for that.
+11 s is `CLIP_SECONDS + WRAP`: the looping layers need one second of overhang
+for the equal-power wrap crossfade. `thunder.wav` is a single 4 s rumble,
+placed twice by the generator rather than looped.
 
-To drop real recordings in later: put the files in this folder, add a row below
-with the source URL and licence, and point the relevant layer in
-`scripts/gen-audio.ts` at the file instead of at `anoisesrc`. Any clip used
-must contain no music.
+`presence.wav` — the murmur that swells with the viewer count — is now
+`crowd.wav`, wrapped with the same crossfade. The synthesised noise-band
+presence it replaced has been dropped.
 
-| File | Source URL | Licence |
-|---|---|---|
-| _(none yet)_ | | |
+### Note on levels
+
+The real recordings are far peakier than the synthesised noise they replaced,
+so peak-matching alone left the beds 5–9 LU below the loudness target. The
+looping beds therefore get a gentle 3:1 compressor (`-26 dB` threshold, 20 ms
+attack, 300 ms release) before normalisation, and are levelled on their
+**ambient body** (1–7 s) rather than their global peak — otherwise the riser
+in variants B and C sets the level and pushes their real material 5–6 dB
+below variant A's, which is what made all three sound alike.
