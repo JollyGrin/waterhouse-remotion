@@ -408,9 +408,12 @@ function mixTo(dst: string, parts: string[]): void {
  */
 function riserLayers(dur: number): string[] {
   const spec: Array<[string, number, string, number, number, number]> = [
-    ["riser-lo", 6101, "lowpass=f=400,highpass=f=60", 7.5, 8.2, 0.9],
-    ["riser-mid", 6203, "bandpass=f=900:w=1200", 8.0, 8.8, 0.75],
-    ["riser-hi", 6301, "highpass=f=2200,lowpass=f=7000", 8.6, 9.2, 0.5],
+    // Gains are high on purpose: the riser has to climb clearly above the
+    // room tone or the "tension -> hit" never reads. At 0.9/0.75/0.5 it only
+    // moved the bed 1.6dB into the seam, which is inaudible.
+    ["riser-lo", 6101, "lowpass=f=400,highpass=f=60", 7.5, 8.2, 3.4],
+    ["riser-mid", 6203, "bandpass=f=900:w=1200", 8.0, 8.8, 3.0],
+    ["riser-hi", 6301, "highpass=f=2200,lowpass=f=7000", 8.6, 9.2, 2.0],
   ];
   return spec.map(([name, seed, filt, inA, inB, gain]) =>
     noiseLayer(name, seed, dur, filt, windowEnv(inA, inB, 9.2, 9.7), gain),

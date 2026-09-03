@@ -74,6 +74,10 @@ and edge-faded identically.
 The **riser** in B and C is three noise bands fading in bottom-up across
 7.5–9.2 s, handing off to the seam whoosh so each loop builds into the frame-0
 thud. It is a filter opening, not a pitch rising — there is no tonal content.
+Its gains are deliberately high: at first pass it moved the bed only 1.6 dB
+into the seam, which is inaudible. It now climbs about 9 dB (−38 dBFS at 7.0 s
+to −29 dBFS at 8.4–9.0 s) before handing off, which is what makes the build
+read.
 
 ### On real recordings
 
