@@ -41,6 +41,8 @@ export const PullUpSchema = z.object({
   avatars: z.array(AvatarSchema),
   chatLines: z.array(ChatLineSchema),
   seed: z.number().optional(),
+  // Audio only - selects which bed texture plays. No visual effect.
+  bedVariant: z.enum(["base", "a", "b", "c"]).optional(),
 });
 
 export type PullUpProps = z.infer<typeof PullUpSchema>;
@@ -476,11 +478,14 @@ function roomLevel(frame: number): number {
   return level / CIRCLES;
 }
 
-const PullUpAudio: React.FC = () => {
+const PullUpAudio: React.FC<{ bedVariant?: "base" | "a" | "b" | "c" }> = ({
+  bedVariant,
+}) => {
+  const bed = bedVariant && bedVariant !== "base" ? `bed-${bedVariant}` : "bed";
   return (
     <>
-      {/* Room tone: sub drone + dark filtered noise. Felt, not heard. */}
-      <Audio src={sfx("bed")} />
+      {/* Room tone. Texture only - no tonal component anywhere in the bed. */}
+      <Audio src={sfx(bed)} />
 
       {/* Room presence, following the counter 0 -> 7 -> 0. */}
       <Audio src={sfx("presence")} volume={(f) => roomLevel(f)} />
@@ -537,6 +542,7 @@ export const PullUp: React.FC<PullUpProps> = ({
   avatars,
   chatLines,
   seed = 0,
+  bedVariant,
 }) => {
   const frame = useCurrentFrame();
 
@@ -569,7 +575,7 @@ export const PullUp: React.FC<PullUpProps> = ({
 
   return (
     <AbsoluteFill style={{ backgroundColor: "#000000" }}>
-      <PullUpAudio />
+      <PullUpAudio bedVariant={bedVariant} />
 
       {/* Hook - where to watch. On screen from frame 0, slams on every loop. */}
       <div

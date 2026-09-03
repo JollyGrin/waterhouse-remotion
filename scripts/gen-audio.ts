@@ -128,17 +128,23 @@ function wrapLoop(src: string, dst: string): void {
  * reads as a noise floor rather than as crackle. Scripting the impulses is
  * the only way to actually land at a few per second.
  */
-function buildGrain(dur: number, perSecond: number): string {
+function buildGrain(
+  dur: number,
+  perSecond: number,
+  name = "grain",
+  seedBase = 9100,
+  band: [number, number] = [400, 2600],
+): string {
   const variants = 4;
   for (let v = 0; v < variants; v++) {
     ff(
       `-f lavfi -i "anoisesrc=c=white:r=${SR}:d=0.005:a=0.9:seed=${9100 + v}" ` +
-        `-af "highpass=f=400,lowpass=f=2600,afade=t=out:st=0:d=0.005:curve=exp" ` +
-        `-c:a pcm_s16le -ar ${SR} -ac 1 ${TMP_DIR}/grain-v${v}.wav`,
+        `-af "highpass=f=${band[0]},lowpass=f=${band[1]},afade=t=out:st=0:d=0.005:curve=exp" ` +
+        `-c:a pcm_s16le -ar ${SR} -ac 1 ${TMP_DIR}/${name}-v${v}.wav`,
     );
   }
 
-  const rng = makeRng(4242);
+  const rng = makeRng(4242 + seedBase);
   const hits: Array<{ v: number; ms: number }> = [];
   // Irregular spacing, so the grain never sounds metronomic.
   let t = 0.05;
@@ -150,7 +156,7 @@ function buildGrain(dur: number, perSecond: number): string {
 
   const inputs: string[] = [];
   for (let v = 0; v < variants; v++) {
-    inputs.push(`-i ${TMP_DIR}/grain-v${v}.wav`);
+    inputs.push(`-i ${TMP_DIR}/${name}-v${v}.wav`);
   }
 
   const useCount = [0, 0, 0, 0];
@@ -183,12 +189,12 @@ function buildGrain(dur: number, perSecond: number): string {
 
   ff(
     `${inputs.join(" ")} -filter_complex "${parts.join(";")}" ` +
-      `-map "[gout]" -t ${dur} -c:a pcm_s16le -ar ${SR} -ac 1 ${TMP_DIR}/grain.wav`,
+      `-map "[gout]" -t ${dur} -c:a pcm_s16le -ar ${SR} -ac 1 ${TMP_DIR}/${name}.wav`,
   );
   console.log(
-    `                 ${hits.length} grain impulses over ${dur}s (${(hits.length / dur).toFixed(1)}/s)`,
+    `                 ${hits.length} ${name} impulses over ${dur}s (${(hits.length / dur).toFixed(1)}/s)`,
   );
-  return `${TMP_DIR}/grain.wav`;
+  return `${TMP_DIR}/${name}.wav`;
 }
 
 function buildBed(): void {
@@ -344,6 +350,249 @@ function buildWhoosh(): void {
   );
 }
 
+// --- Bed variants ---------------------------------------------------------
+//
+// Three alternative beds for the operator to pick by ear. All three obey the
+// same rules as the base bed: no key, no melody, no tempo, no tonal drone -
+// engagement comes from a sense of place and from build, not from music.
+//
+// Every texture here is synthesised. The brief asked for real recordings from
+// pixabay.com; pixabay.com answers HTTP 403 to a scripted fetch and so does
+// cdn.pixabay.com, so there is no way to fetch them from here. See CREDITS.md.
+
+// Comma escaped for use inside an ffmpeg filter expression.
+const C = "\\,";
+const clip01 = (e: string) => `max(0${C}min(1${C}${e}))`;
+/** 0 before `from`, 1 after `to`. */
+const ramp = (from: number, to: number) =>
+  clip01(`(t-${from})/${(to - from).toFixed(4)}`);
+/** 1 before `from`, 0 after `to`. */
+const fall = (from: number, to: number) =>
+  clip01(`(${to}-t)/${(to - from).toFixed(4)}`);
+/** Rises over [a,b], holds, falls over [c,d]. */
+const windowEnv = (a: number, b: number, c: number, d: number) =>
+  `min(${ramp(a, b)}${C}${fall(c, d)})`;
+const volExpr = (e: string) => `volume=volume='${e}':eval=frame`;
+
+/** A band of noise with a level envelope, written to a temp file. */
+function noiseLayer(
+  name: string,
+  seed: number,
+  dur: number,
+  filters: string,
+  env: string,
+  gain: number,
+): string {
+  const out = `${TMP_DIR}/${name}.wav`;
+  ff(
+    `-f lavfi -i "anoisesrc=c=pink:r=${SR}:d=${dur}:a=0.9:seed=${seed}" ` +
+      `-af "${filters},${volExpr(env)},volume=${gain}" ` +
+      `-c:a pcm_s16le -ar ${SR} -ac 1 ${out}`,
+  );
+  return out;
+}
+
+function mixTo(dst: string, parts: string[]): void {
+  const inputs = parts.map((p) => `-i ${p}`).join(" ");
+  const labels = parts.map((_, i) => `[${i}:a]`).join("");
+  ff(
+    `${inputs} -filter_complex "${labels}amix=inputs=${parts.length}:normalize=0[out]" ` +
+      `-map "[out]" -c:a pcm_s16le -ar ${SR} -ac 1 ${dst}`,
+  );
+}
+
+/**
+ * A riser: three noise bands fading in bottom-up so the energy climbs, then
+ * handing off to the seam whoosh. Non-tonal - it is a filter opening, not a
+ * pitch rising. Used by variants B and C so every loop builds into the thud.
+ */
+function riserLayers(dur: number): string[] {
+  const spec: Array<[string, number, string, number, number, number]> = [
+    ["riser-lo", 6101, "lowpass=f=400,highpass=f=60", 7.5, 8.2, 0.9],
+    ["riser-mid", 6203, "bandpass=f=900:w=1200", 8.0, 8.8, 0.75],
+    ["riser-hi", 6301, "highpass=f=2200,lowpass=f=7000", 8.6, 9.2, 0.5],
+  ];
+  return spec.map(([name, seed, filt, inA, inB, gain]) =>
+    noiseLayer(name, seed, dur, filt, windowEnv(inA, inB, 9.2, 9.7), gain),
+  );
+}
+
+/** Variant A: outside -> inside. Rain and city, ducking as the room fills. */
+function buildBedA(): void {
+  const dur = CLIP_SECONDS + WRAP;
+  // The outside world is present at both ends of the clip, so the loop is
+  // consistent: rain -> room -> rain.
+  const outside = `(1-0.8*${windowEnv(2.5, 3.5, 9.0, 9.8)})`;
+  const inside = `(0.12+0.88*${windowEnv(2.5, 3.5, 9.0, 9.8)})`;
+
+  const parts = [
+    // Rain on glass: fine high texture.
+    noiseLayer(
+      "a-rain",
+      7001,
+      dur,
+      `highpass=f=900,lowpass=f=9000,${wander(2, [
+        [0.3, 0.6, 0.4],
+        [0.5, 0.4, 2.0],
+      ])}`,
+      outside,
+      0.55,
+    ),
+    // Distant city at night: far traffic wash.
+    noiseLayer(
+      "a-city",
+      7103,
+      dur,
+      `lowpass=f=400,lowpass=f=400,${wander(3, [
+        [0.1, 0.7, 1.2],
+        [0.2, 0.3, 3.3],
+      ])}`,
+      outside,
+      1.0,
+    ),
+    // Inside: the warm room takes over once you are in it.
+    noiseLayer(
+      "a-room",
+      1701,
+      dur,
+      `lowpass=f=250,lowpass=f=250,highpass=f=22,${wander(2, [
+        [0.2, 0.5, 0],
+        [0.3, 0.3, 1.7],
+        [0.5, 0.2, 3.1],
+      ])}`,
+      inside,
+      1.0,
+    ),
+  ];
+  // Rain needs droplets, not just hiss.
+  const drops = buildGrain(dur, 9, "a-drops", 500, [1200, 7000]);
+  ff(
+    `-i ${drops} -af "${volExpr(outside)},volume=0.5" -c:a pcm_s16le -ar ${SR} -ac 1 ${TMP_DIR}/a-drops-env.wav`,
+  );
+  parts.push(`${TMP_DIR}/a-drops-env.wav`);
+
+  mixTo(`${TMP_DIR}/bed-a-mix.wav`, parts);
+  wrapLoop(`${TMP_DIR}/bed-a-mix.wav`, `${OUT_DIR}/bed-a.wav`);
+}
+
+/** Variant B: venue before the show. Crackle, PA power-up, riser into the hit. */
+function buildBedB(): void {
+  const dur = CLIP_SECONDS + WRAP;
+  const parts = [
+    noiseLayer(
+      "b-room",
+      1701,
+      dur,
+      `lowpass=f=250,lowpass=f=250,highpass=f=22,${wander(2, [
+        [0.2, 0.5, 0],
+        [0.3, 0.3, 1.7],
+        [0.5, 0.2, 3.1],
+      ])}`,
+      "1",
+      1.0,
+    ),
+    // PA power-up: bands opening bottom-up under the ask block, settling to
+    // the low hiss of a rig that is now switched on.
+    noiseLayer(
+      "b-pa-lo",
+      6401,
+      dur,
+      "lowpass=f=500,highpass=f=70",
+      `(0.10+0.90*${windowEnv(1.0, 2.1, 2.4, 3.4)})`,
+      0.55,
+    ),
+    noiseLayer(
+      "b-pa-mid",
+      6503,
+      dur,
+      "bandpass=f=1100:w=1400",
+      `(0.08+0.92*${windowEnv(1.4, 2.4, 2.6, 3.6)})`,
+      0.32,
+    ),
+    noiseLayer(
+      "b-pa-hi",
+      6607,
+      dur,
+      "highpass=f=3000,lowpass=f=8000",
+      `(0.06+0.94*${windowEnv(1.7, 2.5, 2.7, 3.6)})`,
+      0.18,
+    ),
+    ...riserLayers(dur),
+  ];
+  const crackle = buildGrain(dur, 6, "b-crackle", 400, [400, 2600]);
+  ff(
+    `-i ${crackle} -af "volume=0.5" -c:a pcm_s16le -ar ${SR} -ac 1 ${TMP_DIR}/b-crackle-env.wav`,
+  );
+  parts.push(`${TMP_DIR}/b-crackle-env.wav`);
+
+  mixTo(`${TMP_DIR}/bed-b-mix.wav`, parts);
+  wrapLoop(`${TMP_DIR}/bed-b-mix.wav`, `${OUT_DIR}/bed-b.wav`);
+}
+
+/** Variant C: cinematic weather. Thunder, wind gusts, the same riser. */
+function buildBedC(): void {
+  const dur = CLIP_SECONDS + WRAP;
+
+  // Distant thunder: lowpassed noise bursts at irregular intervals. No pitch.
+  const rng = makeRng(31337);
+  const hits: number[] = [];
+  let t = 0.6;
+  while (t < dur - 1.6) {
+    hits.push(Math.round(t * 1000));
+    t += 2.4 + rng() * 2.6;
+  }
+  ff(
+    `-f lavfi -i "anoisesrc=c=brown:r=${SR}:d=1.6:a=0.9:seed=8501" ` +
+      `-af "lowpass=f=120,lowpass=f=120,afade=t=in:st=0:d=0.25:curve=qsin,afade=t=out:st=0.35:d=1.25:curve=exp" ` +
+      `-c:a pcm_s16le -ar ${SR} -ac 1 ${TMP_DIR}/c-thunder-one.wav`,
+  );
+  const outs = hits.map((_, i) => `[s${i}]`);
+  const chain = [
+    outs.length === 1
+      ? `[0:a]anull${outs[0]}`
+      : `[0:a]asplit=${outs.length}${outs.join("")}`,
+    ...hits.map(
+      (ms, i) =>
+        `[s${i}]adelay=${ms},volume=${(0.6 + ((i * 37) % 40) / 100).toFixed(2)}[d${i}]`,
+    ),
+    `${hits.map((_, i) => `[d${i}]`).join("")}amix=inputs=${hits.length}:normalize=0,apad[tout]`,
+  ].join(";");
+  ff(
+    `-i ${TMP_DIR}/c-thunder-one.wav -filter_complex "${chain}" ` +
+      `-map "[tout]" -t ${dur} -c:a pcm_s16le -ar ${SR} -ac 1 ${TMP_DIR}/c-thunder.wav`,
+  );
+  console.log(`                 ${hits.length} thunder rumbles over ${dur}s`);
+
+  const parts = [
+    `${TMP_DIR}/c-thunder.wav`,
+    // Wind: broad texture with deep, slow gusts.
+    noiseLayer(
+      "c-wind",
+      9001,
+      dur,
+      `bandpass=f=700:w=1600,${wander(6, [
+        [0.1, 0.6, 0.9],
+        [0.2, 0.25, 2.6],
+        [0.3, 0.15, 4.4],
+      ])}`,
+      "1",
+      0.8,
+    ),
+    noiseLayer(
+      "c-room",
+      1701,
+      dur,
+      `lowpass=f=250,lowpass=f=250,highpass=f=22`,
+      "1",
+      0.7,
+    ),
+    ...riserLayers(dur),
+  ];
+
+  mixTo(`${TMP_DIR}/bed-c-mix.wav`, parts);
+  wrapLoop(`${TMP_DIR}/bed-c-mix.wav`, `${OUT_DIR}/bed-c.wav`);
+}
+
 // --- Level plan -----------------------------------------------------------
 //
 // Operator-chosen "one step up" loudness: ~-17.5 LUFS integrated.
@@ -366,6 +615,9 @@ const PEAKS: Record<string, number> = {
   msg: -13,
   whoosh: -11,
   bed: -18,
+  "bed-a": -18,
+  "bed-b": -18,
+  "bed-c": -18,
   presence: -4,
 };
 
@@ -396,6 +648,15 @@ function main() {
 
   console.log("  presence.wav   four detuned noise bands, 300-3000Hz");
   buildPresence();
+
+  console.log("  bed-a.wav      variant A: outside -> inside (rain + city)");
+  buildBedA();
+  console.log(
+    "  bed-b.wav      variant B: pre-show venue (crackle, PA, riser)",
+  );
+  buildBedB();
+  console.log("  bed-c.wav      variant C: weather (thunder, wind, riser)");
+  buildBedC();
 
   console.log("  thud.wav       Kenney impactSoft_heavy");
   fromKenney("impact-soft-heavy.ogg", "thud", "lowpass=f=1200");

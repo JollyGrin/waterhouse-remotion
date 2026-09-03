@@ -50,10 +50,55 @@ Both beds are exactly 480000 samples (300 frames at 30 fps) and are wrapped
 onto themselves with an equal-power crossfade, with a 40 ms fade at each edge
 so the loop seam does not click.
 
-### On the crowd murmur
+## Bed variants
 
-The brief's first choice for `presence.wav` was a real crowd/bar murmur from
-[pixabay.com](https://pixabay.com) under the Pixabay Content License.
-`pixabay.com` answers **HTTP 403** to a scripted fetch (bot protection), so the
-documented synthesised fallback is what ships. If a murmur is dropped in later,
-it must contain no music, and its source URL and licence belong in this file.
+Three alternative beds, selected at render time with the audio-only
+`bedVariant` prop (`"a"`, `"b"`, `"c"`; omitted or `"base"` uses `bed.wav`).
+They change nothing visual. All are synthesised, all obey the same rules as the
+base bed — no key, no melody, no tempo, no tonal drone — and all are wrapped
+and edge-faded identically.
+
+- **`bed-a.wav` — outside → inside.** Rain-on-glass texture (fine 900 Hz–9 kHz
+  noise plus ~9 droplet impulses/s) over a distant city wash (brown noise under
+  400 Hz with a slow wander). When YOU arrives at 2.5 s the outside layer ducks
+  ~18 dB over one second and the warm inside room takes over; at 9.0–9.8 s the
+  room empties and the rain returns, so the loop reads rain → room → rain.
+- **`bed-b.wav` — venue before the show.** Vinyl crackle (~6/s), soft room
+  tone, a PA "power-up" from 1.0–2.5 s under the ask block (three noise bands
+  opening bottom-up, settling to the hiss of a rig that is now switched on),
+  and a riser from 7.5 s.
+- **`bed-c.wav` — cinematic weather.** Three distant thunder rumbles at
+  irregular intervals (brown noise bursts lowpassed to 120 Hz, no pitch), a
+  wind texture with ±6 dB slow gusts, and the same riser.
+
+The **riser** in B and C is three noise bands fading in bottom-up across
+7.5–9.2 s, handing off to the seam whoosh so each loop builds into the frame-0
+thud. It is a filter opening, not a pitch rising — there is no tonal content.
+
+### On real recordings
+
+The brief asked for real recordings from [pixabay.com](https://pixabay.com)
+under the Pixabay Content License — a crowd/bar murmur for `presence.wav`, and
+rain, city and thunder for the variants.
+
+**pixabay.com is not reachable from here.** Both the site and its CDN answer
+**HTTP 403** to a scripted fetch, with and without browser headers:
+
+```
+https://pixabay.com/sound-effects/search/...  -> 403
+https://cdn.pixabay.com                        -> 403
+```
+
+Everything therefore ships synthesised. No substitute source was used: the
+point of Pixabay here was its no-attribution licence, and swapping in a
+differently-licensed library (Freesound is reachable, but much of it is CC-BY)
+would change the obligations without anyone asking for that.
+
+To drop real recordings in later: put the files in this folder, add a row below
+with the source URL and licence, and point the relevant layer in
+`scripts/gen-audio.ts` at the file instead of at `anoisesrc`. Any clip used
+must contain no music.
+
+| File | Source URL | Licence |
+|---|---|---|
+| _(none yet)_ | | |
