@@ -66,8 +66,15 @@ PullUp writes `out/PullUp-{name}-{YYYY-MM-DD}.mp4`, one file per event:
 - **No artists linked** - the purpose line stands in, same as WeeklyLineup.
 
 The event title is the `purpose` with its `Radio:` / `Reserved:` / `Private:`
-prefix stripped. Shared clips seed their randomness on the event alone, so
-re-rendering one after the bill changes gives back the same room and chat.
+prefix stripped; a shared booking with no usable purpose is named after its
+artists instead (`PullUp-elemzene-l4c4-...`). Two bookings that would write
+the same filename get their start time appended.
+
+Shared clips seed on the event id rather than on any one artist, so the
+accent colour, the audio variant, the chat lines and the "you" line come back
+the same on every re-render. The room avatars do **not**: they are picked
+from the roster minus whoever is on the bill, so they shift when the bill
+changes or the roster grows.
 
 **Photos.** The preflight fetches each photo, detects the primary face and
 works out how to hang it in the window (`src/pullup/framing.ts`): normally a
@@ -75,7 +82,10 @@ crop slid onto the face with headroom, and for a headshot too tight to crop
 at all, the whole photo over a blurred, darkened copy of itself. A photo with
 no face, or with the detector unavailable, keeps the plain top-anchored crop.
 One that will not load falls back to the artist's initials - including hosts
-that answer the preflight and then block Remotion's Chromium.
+that answer the preflight and then block Remotion's Chromium. That case is
+printed loudly at the end of the run, listing which clips went out with
+initials where a face should be; do not forward those before fixing the
+artist's profile image.
 
 Face detection rides on `sharp`, `@vladmandic/human` and
 `@tensorflow/tfjs-node`, which are **optional dependencies**: they are large,

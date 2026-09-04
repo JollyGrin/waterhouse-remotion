@@ -13,7 +13,7 @@ import {
 } from "remotion";
 import { loadFont as loadJersey } from "@remotion/google-fonts/Jersey10";
 import { loadFont as loadGrotesk } from "@remotion/google-fonts/SpaceGrotesk";
-import { initials } from "./pullup/plan";
+import { billLine, initials } from "./pullup/plan";
 import { PLAYER_FRAME, type Framing } from "./pullup/framing";
 
 // Same brand pairing as WeeklyLineup: Jersey 10 headlines, Space Grotesk body.
@@ -120,17 +120,40 @@ const chatInFrame = (index: number) =>
 
 // Jersey 10 caps run about 0.40em wide. Shrink long headlines rather than
 // letting them wrap or clip - artist names vary a lot in length.
-function fitBrandSize(text: string, maxWidth: number, cap: number): number {
+//
+// Both fitters take a floor as well as a cap: an eleven-artist bill would
+// otherwise shrink the caption to a few pixels, and past ~190 characters the
+// arithmetic turns negative. Text that cannot fit at the floor gets
+// shortened by the caller instead - see billLine().
+function fitBrandSize(
+  text: string,
+  maxWidth: number,
+  cap: number,
+  floor = 0,
+): number {
   if (text.length === 0) return cap;
-  return Math.min(cap, maxWidth / (text.length * 0.4));
+  return Math.max(floor, Math.min(cap, maxWidth / (text.length * 0.4)));
 }
 
 // Space Grotesk bold runs about 0.6em wide, plus the caption's 5px tracking.
-// Three names on one bill would otherwise run past the 940px column.
-function fitCaptionSize(text: string, maxWidth: number, cap: number): number {
+function fitCaptionSize(
+  text: string,
+  maxWidth: number,
+  cap: number,
+  floor = 0,
+): number {
   if (text.length === 0) return cap;
-  return Math.min(cap, (maxWidth / text.length - 5) / 0.6);
+  return Math.max(floor, Math.min(cap, (maxWidth / text.length - 5) / 0.6));
 }
+
+// Below these the line stops being readable on a phone, so the bill gets
+// shortened rather than shrunk any further.
+const CAPTION_MIN_SIZE = 20;
+const CAPTION_MAX_SIZE = 32;
+const CHIP_NAME_MIN_SIZE = 22;
+// Past this many chips the row is a smear of tiny circles; the rest become
+// a single "+N" chip.
+const MAX_CHIPS = 4;
 
 // An impact: at rest, hit, overshoot, settle back to rest. Zero deviation at
 // both ends, so it is safe to run across the loop seam.
@@ -150,14 +173,21 @@ function punch(frame: number, start: number, end: number, amount: number) {
 // answer a plain fetch while blocking the request Chromium makes during a
 // render (imgproxy.ra.co behind Cloudflare is the one that bit us). A bare
 // <Img> calls that fatal and kills the whole render, so every remote photo
-// goes through here instead: the initials fallback is painted underneath,
-// and the first load error drops the <img> for good. Unmounting it also
-// releases the delayRender() handle the image was holding, so the frame
-// continues rather than timing out.
+// goes through here instead: the first load error drops the <img> for good
+// and the fallback takes its place. Unmounting it also releases the
+// delayRender() handle the image was holding, so the frame continues rather
+// than timing out.
+//
+// It says so loudly. A clip that quietly ships with initials where a face
+// should be is worse than one that fails: render-pullup.ts watches for this
+// line and warns before anyone forwards the file.
 //
 // Failures are remembered per src for the life of the page, so a remount
 // does not walk the retry ladder again.
 const failedSrcs = new Set<string>();
+
+/** render-pullup.ts greps the render output for this. Keep them in step. */
+export const PHOTO_FAILED_MARKER = "PullUp photo failed to load:";
 
 const SafeImg: React.FC<{
   src: string;
@@ -167,25 +197,27 @@ const SafeImg: React.FC<{
   const [failed, setFailed] = React.useState(() => failedSrcs.has(src));
 
   const onError = React.useCallback(() => {
-    failedSrcs.add(src);
+    if (!failedSrcs.has(src)) {
+      failedSrcs.add(src);
+      console.error(`${PHOTO_FAILED_MARKER} ${src}`);
+    }
     setFailed(true);
   }, [src]);
 
+  // The fallback replaces the image rather than sitting under it: a photo
+  // with transparency would otherwise show initials through its own alpha.
+  if (failed) return <>{fallback}</>;
+
   return (
-    <>
-      {fallback}
-      {failed ? null : (
-        <Img
-          src={src}
-          // Report the first error instead of retrying twice with backoff:
-          // a host that blocks Chromium will not answer the retries either,
-          // and each one holds the frame open for seconds.
-          maxRetries={0}
-          onError={onError}
-          style={{ position: "absolute", inset: 0, ...style }}
-        />
-      )}
-    </>
+    <Img
+      src={src}
+      // Report the first error instead of retrying twice with backoff: a
+      // host that blocks Chromium will not answer the retries either, and
+      // each one holds the frame open for seconds.
+      maxRetries={0}
+      onError={onError}
+      style={{ position: "absolute", inset: 0, ...style }}
+    />
   );
 };
 
@@ -203,9 +235,10 @@ const Photo: React.FC<{
   if (framing?.fit === "contain") {
     return (
       <>
-        {fallback}
         {/* The backdrop does the breathing, so the photo itself never moves
-            and nothing can drift out of frame. */}
+            and nothing can drift out of frame. It carries no fallback of its
+            own: if the photo is unreachable the foreground below shows the
+            initials, and this simply does not render. */}
         <SafeImg
           src={src}
           fallback={null}
@@ -220,7 +253,7 @@ const Photo: React.FC<{
         />
         <SafeImg
           src={src}
-          fallback={null}
+          fallback={fallback}
           style={{
             width: "100%",
             height: "100%",
@@ -393,12 +426,15 @@ const PerformerChips: React.FC<{
   performers: Performer[];
   breathe: number;
 }> = ({ performers, breathe }) => {
-  // Fit the whole row inside the window: past three names, the chips shrink
-  // rather than running off both ends.
+  // Fit the whole row inside the window: past three names the chips shrink,
+  // and past MAX_CHIPS the tail collapses into one "+N" chip rather than
+  // turning the row into a smear.
+  const shown = performers.slice(0, MAX_CHIPS);
+  const rest = performers.length - shown.length;
+  const columns = shown.length + (rest > 0 ? 1 : 0);
   const gap = 24;
   const column = Math.floor(
-    (PLAYER_FRAME.width - 64 - gap * (performers.length - 1)) /
-      performers.length,
+    (PLAYER_FRAME.width - 64 - gap * (columns - 1)) / columns,
   );
   const size = Math.min(200, column);
 
@@ -415,7 +451,7 @@ const PerformerChips: React.FC<{
         padding: "0 32px",
       }}
     >
-      {performers.map((p, i) => {
+      {shown.map((p, i) => {
         const color = AVATAR_COLORS[i % AVATAR_COLORS.length];
         const name = p.name.toUpperCase();
         const chipInitials = (
@@ -474,11 +510,24 @@ const PerformerChips: React.FC<{
             <div
               style={{
                 fontFamily: brandFont,
-                fontSize: fitBrandSize(name, column, 46),
+                // A little under the column: the 0.40em estimate runs
+                // slightly narrow, and a name that just grazes the edge
+                // would ellipsize for no reason.
+                fontSize: fitBrandSize(
+                  name,
+                  column - 12,
+                  46,
+                  CHIP_NAME_MIN_SIZE,
+                ),
                 lineHeight: 1,
                 color: "#ffffff",
                 textAlign: "center",
+                // A name too long even at the floor gets an ellipsis rather
+                // than shrinking into nothing or pushing its neighbours out.
                 whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                maxWidth: "100%",
               }}
             >
               {name}
@@ -486,6 +535,56 @@ const PerformerChips: React.FC<{
           </div>
         );
       })}
+
+      {rest > 0 ? (
+        <div
+          style={{
+            width: column,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 18,
+          }}
+        >
+          <div
+            style={{
+              width: size,
+              height: size,
+              borderRadius: "50%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "#141414",
+              border: "3px solid #555555",
+              transform: `scale(${breathe})`,
+              flexShrink: 0,
+            }}
+          >
+            <span
+              style={{
+                fontFamily: brandFont,
+                fontSize: size * 0.36,
+                lineHeight: 1,
+                color: "#bbbbbb",
+              }}
+            >
+              +{rest}
+            </span>
+          </div>
+          <div
+            style={{
+              fontFamily: brandFont,
+              fontSize: fitBrandSize("MORE", column, 46, CHIP_NAME_MIN_SIZE),
+              lineHeight: 1,
+              color: "#8a8a8a",
+              textAlign: "center",
+              whiteSpace: "nowrap",
+            }}
+          >
+            MORE
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };
@@ -928,9 +1027,19 @@ export const PullUp: React.FC<PullUpProps> = ({
   const artist = artistName.toUpperCase();
   const headlineText = `COME WATCH ${artist} LIVE`;
   const streamingText = `STREAMING ${day} ${eventTime}`;
-  const captionText = `${day} ${eventTime} \u00b7 ${
-    bill ? bill.map((p) => p.name.toUpperCase()).join(" \u00d7 ") : artist
-  }`;
+  // Shorten the bill until the caption reads at a legible size:
+  // "ELEMZENE × L4C4 × ... × TJ GEE", then "ELEMZENE × L4C4 + 9 more".
+  const caption = (tail: string) => `${day} ${eventTime} \u00b7 ${tail}`;
+  const captionText = caption(
+    bill
+      ? billLine(
+          bill.map((p) => p.name.toUpperCase()),
+          (text) =>
+            fitCaptionSize(caption(text), 940, CAPTION_MAX_SIZE) >=
+            CAPTION_MIN_SIZE,
+        )
+      : artist,
+  );
 
   const headlinePunch = punch(frame, 0, HEADLINE_PUNCH_END, 0.1);
   const askPunch = punch(frame, ASK_PUNCH_START, ASK_PUNCH_END, 0.06);
@@ -1002,7 +1111,12 @@ export const PullUp: React.FC<PullUpProps> = ({
           height: 42,
           textAlign: "center",
           fontFamily: bodyFont,
-          fontSize: fitCaptionSize(captionText, 940, 32),
+          fontSize: fitCaptionSize(
+            captionText,
+            940,
+            CAPTION_MAX_SIZE,
+            CAPTION_MIN_SIZE,
+          ),
           fontWeight: 700,
           letterSpacing: 5,
           color: "#8a8a8a",

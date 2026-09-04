@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  billLine,
   eventTitle,
   hashSeed,
   initials,
@@ -10,6 +11,7 @@ import {
   planJobs,
   slugify,
   syntheticArtist,
+  uniqueStems,
   type PullUpArtist,
   type PullUpEvent,
 } from "./plan";
@@ -101,6 +103,21 @@ describe("planJobs", () => {
     expect(jobSlug(jobs[0])).toBe("open-decks");
   });
 
+  it("names an untitled shared booking after its artists", () => {
+    for (const purpose of [null, "", "   ", "Radio:", "Reserved: "]) {
+      const [job] = planJobs([
+        { ...beatshopping, id: "untitled", purpose, artists: [elemzene, l4c4] },
+      ]);
+      expect(jobName(job)).toBe("Elemzene \u00d7 L4C4");
+      expect(jobSlug(job)).toBe("elemzene-l4c4");
+    }
+  });
+
+  it("still uses the purpose when there is one", () => {
+    const [job] = planJobs([beatshopping]);
+    expect(jobName(job)).toBe("Beatshopping");
+  });
+
   it("handles a mixed batch", () => {
     const jobs = planJobs([
       beatshopping,
@@ -111,11 +128,13 @@ describe("planJobs", () => {
 });
 
 describe("seeding", () => {
-  it("seeds a shared clip on the event alone, so re-renders are stable", () => {
+  it("seeds a shared clip on the event, not on whichever artist sorts first", () => {
     const [job] = planJobs([beatshopping]);
     expect(jobSeedSource(job)).toBe(beatshopping.id);
 
-    // Reordering the bill must not reshuffle a clip already sent out.
+    // Reordering the bill must not change the accent, the audio variant or
+    // the chat lines. (The room avatars still shift - they are picked from
+    // the roster minus the bill, which the seed cannot hold still.)
     const [reordered] = planJobs([
       { ...beatshopping, artists: [l4c4, elemzene] },
     ]);
@@ -149,5 +168,85 @@ describe("syntheticArtist", () => {
     expect(a.stage_name).toBe("Sudden Rave");
     expect(a.id).toBe("synthetic-e3");
     expect(a.profile_image_url).toBeNull();
+  });
+});
+
+describe("billLine", () => {
+  const names = ["ELEMZENE", "L4C4", "TJ GEE", "DENZO"];
+
+  it("keeps every name when they all fit", () => {
+    expect(billLine(names, () => true)).toBe(
+      "ELEMZENE \u00d7 L4C4 \u00d7 TJ GEE \u00d7 DENZO",
+    );
+  });
+
+  it("trades names for a count until the line fits", () => {
+    // Only lines of 24 characters or fewer are allowed.
+    expect(billLine(names, (t) => t.length <= 24)).toBe(
+      "ELEMZENE \u00d7 L4C4 + 2 more",
+    );
+  });
+
+  it("falls back to a bare count when even one name is too long", () => {
+    expect(billLine(names, (t) => t.length <= 4)).toBe("4 artists");
+  });
+
+  it("is empty for an empty bill", () => {
+    expect(billLine([], () => true)).toBe("");
+  });
+
+  it("shortens an eleven-artist NYE bill", () => {
+    const nye = Array.from({ length: 11 }, (_, i) => `ARTIST ${i + 1}`);
+    // 60 characters is roughly what the caption column holds at its floor.
+    const line = billLine(nye, (t) => t.length <= 60);
+    expect(line).toBe(
+      "ARTIST 1 \u00d7 ARTIST 2 \u00d7 ARTIST 3 \u00d7 ARTIST 4 + 7 more",
+    );
+    expect(line.length).toBeLessThanOrEqual(60);
+  });
+});
+
+describe("uniqueStems", () => {
+  it("leaves distinct stems alone", () => {
+    expect(
+      uniqueStems([
+        { slug: "denzo", day: "2026-09-08", time: "1900" },
+        { slug: "beatshopping", day: "2026-09-11", time: "1900" },
+      ]),
+    ).toEqual(["denzo-2026-09-08", "beatshopping-2026-09-11"]);
+  });
+
+  it("adds the start time when two clips would collide", () => {
+    // Two "Radio: Open Decks" bookings on one day, afternoon and evening:
+    // without this the second silently overwrites the first.
+    expect(
+      uniqueStems([
+        { slug: "open-decks", day: "2026-09-11", time: "1400" },
+        { slug: "open-decks", day: "2026-09-11", time: "2000" },
+      ]),
+    ).toEqual(["open-decks-2026-09-11-1400", "open-decks-2026-09-11-2000"]);
+  });
+
+  it("counts off a third clip in the very same slot", () => {
+    const stems = uniqueStems([
+      { slug: "open-decks", day: "2026-09-11", time: "2000" },
+      { slug: "open-decks", day: "2026-09-11", time: "2000" },
+      { slug: "open-decks", day: "2026-09-11", time: "2000" },
+    ]);
+    expect(new Set(stems).size).toBe(3);
+    expect(stems).toEqual([
+      "open-decks-2026-09-11-2000",
+      "open-decks-2026-09-11-2000-2",
+      "open-decks-2026-09-11-2000-3",
+    ]);
+  });
+
+  it("never returns a duplicate for a real batch", () => {
+    const stems = uniqueStems([
+      { slug: "denzo", day: "2026-09-08", time: "1900" },
+      { slug: "denzo", day: "2026-09-08", time: "1900" },
+      { slug: "denzo", day: "2026-09-15", time: "1900" },
+    ]);
+    expect(new Set(stems).size).toBe(stems.length);
   });
 });

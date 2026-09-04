@@ -32,6 +32,43 @@ export interface Detection {
 // a 4000px phone photo otherwise costs seconds per image.
 const DETECT_MAX_EDGE = 768;
 
+/** As much of `sharp().metadata()` as the orientation question needs. */
+export interface ImageMeta {
+  width?: number;
+  height?: number;
+  /** EXIF orientation, 1-8. 5-8 are the quarter turns. */
+  orientation?: number;
+  /** sharp >= 0.34 reports the auto-oriented size here. */
+  autoOrient?: { width?: number; height?: number };
+}
+
+/**
+ * The size the image presents once EXIF orientation is applied - what
+ * `.rotate()` produces, what a browser shows, and the frame a face box has
+ * to be expressed in.
+ *
+ * `metadata()` reports the size as STORED, even on a pipeline already told
+ * to rotate. A phone photo shot sideways is stored 4000x3000 with
+ * orientation 6 and presents as 3000x4000, so reading width/height straight
+ * off the metadata squashes the detect resize and lands the crop nowhere
+ * near the face.
+ */
+export function orientedSize(meta: ImageMeta): {
+  width: number;
+  height: number;
+} {
+  const auto = meta.autoOrient;
+  if (auto?.width && auto?.height) {
+    return { width: auto.width, height: auto.height };
+  }
+  const width = meta.width ?? 0;
+  const height = meta.height ?? 0;
+  // 5-8 are the orientations that turn the image a quarter circle.
+  return (meta.orientation ?? 1) >= 5
+    ? { width: height, height: width }
+    : { width, height };
+}
+
 // Hidden from tsc on purpose - see the header.
 const optional = (name: string) => name;
 
@@ -132,9 +169,9 @@ export async function detectFace(bytes: Uint8Array): Promise<Detection | null> {
   try {
     // .rotate() applies the EXIF orientation, which is what a browser shows.
     const source = sharp(bytes).rotate();
-    const meta = await source.metadata();
-    const imageWidth = meta.width ?? 0;
-    const imageHeight = meta.height ?? 0;
+    const { width: imageWidth, height: imageHeight } = orientedSize(
+      await source.metadata(),
+    );
     if (!imageWidth || !imageHeight) return null;
 
     const scale = Math.min(
@@ -196,7 +233,7 @@ async function annotate(bytes: Uint8Array) {
   const human = await loadHuman();
   if (!sharp || !human) return null;
   const source = sharp(bytes).rotate();
-  const meta = await source.metadata();
+  const meta = orientedSize(await source.metadata());
   const scale = Math.min(
     1,
     DETECT_MAX_EDGE / Math.max(meta.width, meta.height),

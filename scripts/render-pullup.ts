@@ -19,9 +19,8 @@
  * Output: out/PullUp-{artist-or-event-slug}-{YYYY-MM-DD}.mp4
  */
 
-import { execSync } from "child_process";
 import { writeFileSync } from "fs";
-import { PULLUP_DURATION } from "../src/PullUp";
+import { PHOTO_FAILED_MARKER, PULLUP_DURATION } from "../src/PullUp";
 import {
   hashSeed,
   initials,
@@ -32,6 +31,7 @@ import {
   makeRng,
   pickDistinct,
   planJobs,
+  uniqueStems,
   type PullUpArtist,
   type PullUpJob,
 } from "../src/pullup/plan";
@@ -131,6 +131,15 @@ function formatTime(dateStr: string): string {
   return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
+// `HHMM` in local time, used only to tell two same-titled bookings on one
+// day apart in the filename.
+function isoTime(dateStr: string): string {
+  const d = new Date(dateStr);
+  const h = `${d.getHours()}`.padStart(2, "0");
+  const m = `${d.getMinutes()}`.padStart(2, "0");
+  return `${h}${m}`;
+}
+
 function isoDay(dateStr: string): string {
   const d = new Date(dateStr);
   const m = `${d.getMonth() + 1}`;
@@ -155,59 +164,89 @@ async function fetchReservations(token: string | null): Promise<Reservation[]> {
 
 // Roster rows carry stale profile URLs (dead SoundCloud CDN links, 404s), so
 // weed them out once up front and let the composition fall back to initials.
+// Headers only: some of these point at 50MB background gifs, and every
+// roster photo goes through here on an --all run.
+//
 // This is a cheap first pass, not a guarantee: a host can answer Bun and
 // still refuse Chromium (imgproxy.ra.co behind Cloudflare does exactly that),
 // which is why <SafeImg> in src/PullUp.tsx catches the rest at render time.
-const imageCache = new Map<string, Uint8Array | null>();
+const imageCache = new Map<string, boolean>();
 
-async function imageBytes(url: string | null): Promise<Uint8Array | null> {
-  if (!url) return null;
+async function imageLoads(url: string | null): Promise<boolean> {
+  if (!url) return false;
   const cached = imageCache.get(url);
   if (cached !== undefined) return cached;
 
-  let bytes: Uint8Array | null = null;
+  let ok = false;
   try {
     const res = await fetch(url, {
       method: "GET",
       headers: { Accept: "image/*" },
       signal: AbortSignal.timeout(8000),
     });
-    if (
-      res.ok &&
-      (res.headers.get("content-type") || "").indexOf("image") === 0
-    ) {
-      bytes = new Uint8Array(await res.arrayBuffer());
-    }
+    ok =
+      res.ok && (res.headers.get("content-type") || "").indexOf("image") === 0;
+    // Nothing reads res.body, so the download is cancelled here.
+    await res.body?.cancel();
   } catch {
-    bytes = null;
+    ok = false;
   }
-  if (!bytes) {
+  if (!ok) {
     console.log(`  (skipping unreachable image ${url})`);
   }
-  imageCache.set(url, bytes);
-  return bytes;
+  imageCache.set(url, ok);
+  return ok;
 }
 
-async function imageLoads(url: string | null): Promise<boolean> {
-  return (await imageBytes(url)) !== null;
+// Face detection is the only thing that needs the actual pixels, and it only
+// runs for the one or two photos that land in the stream window - never for
+// the roster avatars. Anything huge is skipped rather than pulled into
+// memory; it would only be a background gif anyway.
+const DETECT_MAX_BYTES = 24 * 1024 * 1024;
+
+const faceCache = new Map<string, Detection | null>();
+
+async function detectionFor(url: string): Promise<Detection | null> {
+  const cached = faceCache.get(url);
+  if (cached !== undefined) return cached;
+
+  let detection: Detection | null = null;
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { Accept: "image/*" },
+      signal: AbortSignal.timeout(30000),
+    });
+    const declared = Number(res.headers.get("content-length") ?? 0);
+    if (res.ok && declared <= DETECT_MAX_BYTES) {
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      detection =
+        bytes.byteLength <= DETECT_MAX_BYTES ? await detectFace(bytes) : null;
+    } else {
+      await res.body?.cancel();
+      if (declared > DETECT_MAX_BYTES) {
+        console.log(
+          `  (${url} is ${Math.round(declared / 1e6)}MB - not detecting a face in it)`,
+        );
+      }
+    }
+  } catch {
+    detection = null;
+  }
+  faceCache.set(url, detection);
+  return detection;
 }
 
 // A photo, framed. `targetAspect` is the window it has to hang in; pass null
 // for the small round avatars, which stay a plain centred cover crop.
-const faceCache = new Map<string, Detection | null>();
-
 async function photo(
   url: string | null,
   targetAspect: number | null,
 ): Promise<{ image: string | null; framing?: Framing }> {
-  const bytes = await imageBytes(url);
-  if (!bytes || !url) return { image: null };
+  if (!url || !(await imageLoads(url))) return { image: null };
   if (targetAspect === null) return { image: url };
 
-  if (!faceCache.has(url)) {
-    faceCache.set(url, await detectFace(bytes));
-  }
-  const detection = faceCache.get(url) ?? null;
+  const detection = await detectionFor(url);
   if (!detection) return { image: url };
 
   const framing = frameFace({
@@ -273,8 +312,68 @@ function buildChatLines(
   ];
 }
 
+/**
+ * Runs the render, streaming its output through so progress still shows,
+ * and hands back everything it printed so the caller can look for photos
+ * that failed inside Chromium.
+ */
+async function runRender(cmd: string[]): Promise<string> {
+  const child = Bun.spawn(cmd, {
+    cwd: process.cwd(),
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  let captured = "";
+  const tee = async (
+    stream: ReadableStream<Uint8Array>,
+    out: NodeJS.WriteStream,
+  ) => {
+    const reader = stream.getReader();
+    const decoder = new TextDecoder();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const text = decoder.decode(value, { stream: true });
+      captured += text;
+      out.write(text);
+    }
+  };
+
+  await Promise.all([
+    tee(child.stdout, process.stdout),
+    tee(child.stderr, process.stderr),
+  ]);
+  const code = await child.exited;
+  if (code !== 0) {
+    throw new Error(`remotion render exited with ${code}`);
+  }
+  return captured;
+}
+
+/**
+ * Photos that loaded in the preflight and then failed inside Chromium.
+ * <SafeImg> prints one line per failing src; Remotion forwards it with a
+ * `[Tab 3, ...]` prefix, which is why this matches rather than parses.
+ */
+export function failedPhotosIn(output: string): string[] {
+  const pattern = new RegExp(`${PHOTO_FAILED_MARKER}\\s+(\\S+)`, "g");
+  return Array.from(new Set(Array.from(output.matchAll(pattern), (m) => m[1])));
+}
+
+export interface RenderedClip {
+  outPath: string;
+  /** Photos that loaded in the preflight and then failed inside Chromium. */
+  failedPhotos: string[];
+}
+
 // --- Render one clip ---
-async function renderClip(job: PullUpJob, roster: Artist[]): Promise<string> {
+async function renderClip(
+  job: PullUpJob,
+  stem: string,
+  roster: Artist[],
+): Promise<RenderedClip> {
   const event = job.event;
   const seed = hashSeed(jobSeedSource(job));
   const rng = makeRng(seed);
@@ -320,7 +419,6 @@ async function renderClip(job: PullUpJob, roster: Artist[]): Promise<string> {
     seed: seed % 4,
   };
 
-  const stem = `${jobSlug(job)}-${isoDay(event.start_time)}`;
   const outPath = `out/PullUp-${stem}.mp4`;
   const propsPath = `/tmp/waterhouse-pullup-${stem}.json`;
   writeFileSync(propsPath, JSON.stringify(props, null, 2));
@@ -333,14 +431,13 @@ async function renderClip(job: PullUpJob, roster: Artist[]): Promise<string> {
     "PullUp",
     outPath,
     `--props=${propsPath}`,
-  ].join(" ");
+  ];
 
-  console.log(`\n$ ${cmd}`);
-  execSync(cmd, {
-    stdio: ["ignore", "inherit", "inherit"],
-    cwd: process.cwd(),
-  });
-  return outPath;
+  console.log(`\n$ ${cmd.join(" ")}`);
+  const output = await runRender(cmd);
+
+  // The clip still renders, with initials in place of a face.
+  return { outPath, failedPhotos: failedPhotosIn(output) };
 }
 
 // --- Main ---
@@ -459,27 +556,55 @@ async function main() {
   // One clip per artist, except a shared booking, which is one per event.
   const jobs = planJobs(chosen);
 
+  // Remotion overwrites without asking, so two bookings that would land on
+  // the same filename - same title, same day - get their start time added.
+  const stems = uniqueStems(
+    jobs.map((j) => ({
+      slug: jobSlug(j),
+      day: isoDay(j.event.start_time),
+      time: isoTime(j.event.start_time),
+    })),
+  );
+
   console.log(
     `\nRendering ${jobs.length} clip(s), ${PULLUP_DURATION} frames each (${(PULLUP_DURATION / 30).toFixed(1)}s):`,
   );
-  for (const j of jobs) {
+  jobs.forEach((j, i) => {
     const bill =
       j.kind === "shared"
         ? ` (${j.artists.map((a) => a.stage_name).join(" + ")})`
         : "";
     console.log(
-      `  ${formatDate(j.event.start_time)} ${formatTime(j.event.start_time)} - ${jobName(j)}${bill}`,
+      `  ${formatDate(j.event.start_time)} ${formatTime(j.event.start_time)} - ${jobName(j)}${bill} -> PullUp-${stems[i]}.mp4`,
     );
-  }
+  });
 
-  const written: string[] = [];
-  for (const j of jobs) {
-    written.push(await renderClip(j, roster));
+  const written: RenderedClip[] = [];
+  for (let i = 0; i < jobs.length; i++) {
+    written.push(await renderClip(jobs[i], stems[i], roster));
   }
 
   console.log(`\nDone! ${written.length} file(s):`);
   for (const w of written) {
-    console.log(`  ${w}`);
+    console.log(`  ${w.outPath}`);
+  }
+
+  // Loud on purpose: these clips look finished and are missing a face.
+  const withFallbacks = written.filter((w) => w.failedPhotos.length > 0);
+  if (withFallbacks.length > 0) {
+    console.log(
+      `\n!! ${withFallbacks.length} clip(s) show INITIALS where a photo should be.`,
+    );
+    console.log(
+      "   The photo loaded in the preflight but the render could not fetch it.",
+    );
+    for (const w of withFallbacks) {
+      console.log(`   ${w.outPath}`);
+      for (const src of w.failedPhotos) {
+        console.log(`     ${src}`);
+      }
+    }
+    console.log("   Fix the artist's profile image before forwarding these.");
   }
 }
 
@@ -517,7 +642,11 @@ function readLine(): Promise<string> {
   });
 }
 
-main().catch((err) => {
-  console.error("Error:", err);
-  process.exit(1);
-});
+// Only when run as the script, so a test can import from here without
+// kicking off a render. (`import.meta` is off limits under this tsconfig.)
+if (/render-pullup\.ts$/.test(process.argv[1] ?? "")) {
+  main().catch((err) => {
+    console.error("Error:", err);
+    process.exit(1);
+  });
+}
