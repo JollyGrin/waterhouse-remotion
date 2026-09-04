@@ -19,16 +19,24 @@
  *   `watchMin` is the summed length of those visits.
  * - **Pulled**: no snapshot in *any* session during the 30 days before this
  *   session started.
- * - **Came back**: present in this artist's previous session, and not pulled.
+ * - **Returning**: not pulled, and this artist is their main artist — of the
+ *   distinct Waterhouse sessions they attended in the previous 90 days, at
+ *   least half belong to this artist, and at least one of them does.
  * - **Regular**: everyone else.
- * - **Stayed**: `watchMin >= max(30, half the session)`. **Bounced**:
- *   `watchMin < 10`. **holdRate**: stayed / uniques, 0 when there are none.
- * - **Quadrant**: `pulled >= 2` is "many", `holdRate >= 0.5` is "held".
+ * - **Crowd**: `pulled + returning` — the audience this artist brought, as
+ *   opposed to the room that was already there. The weekly board ranks on it.
+ * - **Stayed**: `watchMin >= min(30, half the session)` — half an hour, or
+ *   half the set if the set was shorter. **Bounced**: `watchMin < 10`.
+ *   **holdRate**: stayed / uniques, 0 when there are none.
+ * - **Quadrant**: `crowd >= 3` is "many", `holdRate >= 0.5` is "held".
+ * - **Chat**: messages and distinct chatters, same exclusions as viewers.
+ *   `null` means the logger has no chat for the window — never read it as 0.
  */
 
 import type {
   Badge,
   BoardRow,
+  ChatStats,
   Quadrant,
   SessionAudience,
   Viewer,
@@ -42,20 +50,30 @@ export const VISIT_GAP_MIN = 2;
 /** Window used to decide whether a viewer is new to the channel. */
 export const PULLED_LOOKBACK_DAYS = 30;
 
+/** Window used to work out whose regular a viewer is. */
+export const MAIN_ARTIST_LOOKBACK_DAYS = 90;
+
+/** Share of a viewer's recent sessions that must be this artist's. */
+export const MAIN_ARTIST_SHARE = 0.5;
+
 /** Share of a session a reservation must cover to own it. */
 export const SESSION_OVERLAP_RATIO = 0.2;
 
 /** Under this many watched minutes a viewer bounced. */
 export const BOUNCE_MAX_MIN = 10;
 
-/** Floor for the "stayed" threshold, in minutes. */
-export const STAY_FLOOR_MIN = 30;
+/**
+ * Cap on the "stayed" threshold, in minutes. Half an hour is a real stay
+ * whatever the set length, so the threshold is the *lesser* of this and half
+ * the session — a 20-minute set cannot demand 30 minutes of watching.
+ */
+export const STAY_TARGET_MIN = 30;
 
 /** Fraction of the session a viewer must watch to have stayed. */
 export const STAY_RATIO = 0.5;
 
-/** `pulled >= this` counts as "many" for the quadrant. */
-export const QUADRANT_PULLED_MIN = 2;
+/** `crowd >= this` counts as "many" for the quadrant. */
+export const QUADRANT_CROWD_MIN = 3;
 
 /** `holdRate >= this` counts as "held" for the quadrant. */
 export const QUADRANT_HOLD_MIN = 0.5;
@@ -96,6 +114,15 @@ export interface StreamSession {
   durationMin: number;
   peakViewers: number;
   uniqueViewers: number;
+  /** New follows during the stream, from `interactions.follows`. */
+  follows: number;
+}
+
+/** One chat line, as the logger's `/api/events/chat` returns it. */
+export interface ChatMessage {
+  timestamp: string;
+  userId: string;
+  username: string;
 }
 
 /** An artist as the reservations API describes them. */
@@ -338,26 +365,164 @@ export function pulledWindowStart(sessionStartMs: number): number {
   return sessionStartMs - PULLED_LOOKBACK_DAYS * MS_PER_DAY;
 }
 
+/** Start of the main-artist lookback window for a session. */
+export function mainArtistWindowStart(sessionStartMs: number): number {
+  return sessionStartMs - MAIN_ARTIST_LOOKBACK_DAYS * MS_PER_DAY;
+}
+
+/**
+ * Messages and distinct chatters across one or more sessions, minus the same
+ * accounts the audience counts exclude. Chatters are distinct across the whole
+ * set, so a week's board does not count the same person twice.
+ *
+ * Callers pass `null` through instead of calling this when the logger has no
+ * chat for the window at all — silence and no-data are not the same thing.
+ */
+export function chatStatsFor(
+  messages: ChatMessage[],
+  sessions: StreamSession[],
+  exclusions: Set<string>,
+): ChatStats {
+  const chatters = new Set<string>();
+  let count = 0;
+  for (const m of messagesInSessions(messages, sessions)) {
+    if (exclusions.has((m.username || "").toLowerCase())) continue;
+    count++;
+    chatters.add(m.userId);
+  }
+  return { messages: count, chatters: chatters.size };
+}
+
+/** Chat lines that fall inside any of `sessions`, exclusions not applied. */
+function messagesInSessions(
+  messages: ChatMessage[],
+  sessions: StreamSession[],
+): ChatMessage[] {
+  const windows = sessions.map((s) => ({
+    start: toMs(s.start),
+    end: toMs(s.end),
+  }));
+  const out: ChatMessage[] = [];
+  for (const m of messages) {
+    const t = toMs(m.timestamp);
+    for (const w of windows) {
+      if (t >= w.start && t <= w.end) {
+        out.push(m);
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Chat for a set of sessions, or `null` when the logger captured nothing in
+ * their windows at all.
+ *
+ * Chat capture is a later phase of the logger, so most windows are still
+ * blank, and a blank one means "we have no data" — never "nobody spoke". A
+ * window that does have rows can still come back as zero once the house
+ * account, the artist and the bots are removed: that is a real silence and
+ * stays a zero.
+ */
+export function chatStatsOrNull(
+  messages: ChatMessage[],
+  sessions: StreamSession[],
+  exclusions: Set<string>,
+): ChatStats | null {
+  const inWindow = messagesInSessions(messages, sessions);
+  if (inWindow.length === 0) return null;
+  return chatStatsFor(inWindow, sessions, exclusions);
+}
+
 // --- Classification -------------------------------------------------------
 
 export type ViewerKind = Viewer["kind"];
 
+/** How many recent sessions a viewer went to, and how many were this artist's. */
+export interface ViewerAttendance {
+  artistSessions: number;
+  totalSessions: number;
+}
+
+/** A session already joined to the artists it belongs to. */
+export interface AttendedSession {
+  session: StreamSession;
+  artistIds: string[];
+}
+
+/**
+ * Attendance over `[fromMs, toMsExclusive)`: for every viewer, how many
+ * distinct Waterhouse sessions they watched and how many of those were
+ * `artistId`'s. Sessions nobody is booked on still count towards the total —
+ * they are sessions the viewer chose to watch.
+ */
+export function buildAttendance(
+  snapshots: ChatterSnapshot[],
+  attended: AttendedSession[],
+  artistId: string,
+  fromMs: number,
+  toMsExclusive: number,
+): Map<string, ViewerAttendance> {
+  const out = new Map<string, ViewerAttendance>();
+  for (const item of attended) {
+    const start = toMs(item.session.start);
+    if (start < fromMs || start >= toMsExclusive) continue;
+    let mine = false;
+    for (const id of item.artistIds) {
+      if (id === artistId) mine = true;
+    }
+    const ids = userIdsInSessions(
+      snapshots,
+      [item.session],
+      start,
+      toMs(item.session.end) + 1,
+    );
+    for (const userId of ids) {
+      const entry = out.get(userId);
+      if (entry) {
+        entry.totalSessions++;
+        if (mine) entry.artistSessions++;
+      } else {
+        out.set(userId, {
+          artistSessions: mine ? 1 : 0,
+          totalSessions: 1,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+/** Is this artist the viewer's main artist over the lookback window? */
+export function isMainArtist(
+  attendance: ViewerAttendance | undefined,
+): boolean {
+  if (!attendance) return false;
+  if (attendance.artistSessions < 1) return false;
+  if (attendance.totalSessions < 1) return false;
+  return (
+    attendance.artistSessions / attendance.totalSessions >= MAIN_ARTIST_SHARE
+  );
+}
+
 /**
  * `priorUserIds` are everyone seen in any session in the 30 days before this
- * one; `previousSessionUserIds` are everyone in this artist's last session.
+ * one; `attendance` is this viewer's 90-day record against this artist.
  */
 export function classifyViewer(
   userId: string,
   priorUserIds: Set<string>,
-  previousSessionUserIds: Set<string>,
+  attendance: ViewerAttendance | undefined,
 ): ViewerKind {
   if (!priorUserIds.has(userId)) return "pulled";
-  if (previousSessionUserIds.has(userId)) return "cameBack";
+  if (isMainArtist(attendance)) return "returning";
   return "regular";
 }
 
+/** Half an hour, or half the set when the set was shorter than an hour. */
 export function stayThresholdMin(durationMin: number): number {
-  return Math.max(STAY_FLOOR_MIN, STAY_RATIO * durationMin);
+  return Math.min(STAY_TARGET_MIN, STAY_RATIO * durationMin);
 }
 
 export function isStayed(watchMin: number, durationMin: number): boolean {
@@ -372,8 +537,8 @@ export function computeHoldRate(stayed: number, uniques: number): number {
   return uniques === 0 ? 0 : round2(stayed / uniques);
 }
 
-export function quadrantFor(pulled: number, holdRate: number): Quadrant {
-  const many = pulled >= QUADRANT_PULLED_MIN;
+export function quadrantFor(crowd: number, holdRate: number): Quadrant {
+  const many = crowd >= QUADRANT_CROWD_MIN;
   const held = holdRate >= QUADRANT_HOLD_MIN;
   if (many && held) return "packed-held";
   if (many) return "hype-cliff";
@@ -485,8 +650,10 @@ export interface SessionAudienceInput {
   exclusions: Set<string>;
   /** Everyone seen in any session in the 30 days before this one. */
   priorUserIds: Set<string>;
-  /** Everyone in this artist's previous session. */
-  previousSessionUserIds: Set<string>;
+  /** Each viewer's 90-day record against the artist this session is for. */
+  attendance: Map<string, ViewerAttendance>;
+  /** Messages and chatters, or null when the logger has no chat data. */
+  chat: ChatStats | null;
   /** Reservation start to label the slot with; falls back to session start. */
   slotIso?: string | null;
   shared: boolean;
@@ -512,12 +679,12 @@ export interface SessionAnalysis {
  * needs to aggregate an artist's sessions without double-counting anyone.
  */
 export function analyseSession(input: SessionAudienceInput): SessionAnalysis {
-  const { session, exclusions, priorUserIds, previousSessionUserIds } = input;
+  const { session, exclusions, priorUserIds, attendance } = input;
   const sStart = toMs(session.start);
   const presence = buildPresence(input.snapshots, session, exclusions);
 
   let pulled = 0;
-  let cameBack = 0;
+  let returning = 0;
   let regulars = 0;
   let stayedCount = 0;
 
@@ -525,9 +692,13 @@ export function analyseSession(input: SessionAudienceInput): SessionAnalysis {
   const entries: SessionEntry[] = [];
 
   for (const p of presence) {
-    const kind = classifyViewer(p.userId, priorUserIds, previousSessionUserIds);
+    const kind = classifyViewer(
+      p.userId,
+      priorUserIds,
+      attendance.get(p.userId),
+    );
     if (kind === "pulled") pulled++;
-    else if (kind === "cameBack") cameBack++;
+    else if (kind === "returning") returning++;
     else regulars++;
 
     const stayed = isStayed(p.watchMin, session.durationMin);
@@ -553,6 +724,7 @@ export function analyseSession(input: SessionAudienceInput): SessionAnalysis {
 
   const uniques = presence.length;
   const holdRate = computeHoldRate(stayedCount, uniques);
+  const crowd = pulled + returning;
 
   const audience: SessionAudience = {
     start: session.start,
@@ -562,11 +734,14 @@ export function analyseSession(input: SessionAudienceInput): SessionAnalysis {
     dateLabel: dateLabel(session.start),
     peak: session.peakViewers,
     uniques,
+    crowd,
     pulled,
-    cameBack,
+    returning,
     regulars,
     holdRate,
-    quadrant: quadrantFor(pulled, holdRate),
+    follows: session.follows,
+    chat: input.chat,
+    quadrant: quadrantFor(crowd, holdRate),
     shared: input.shared,
     viewers,
   };
@@ -585,7 +760,6 @@ export function buildSessionAudience(
 /** A board row plus the bits only badge assignment needs. */
 export interface BoardCandidate extends BoardRow {
   artistId: string;
-  cameBack: number;
   /** Start of this artist's earliest session in the window; breaks ties. */
   firstSessionMs: number;
 }
@@ -601,12 +775,15 @@ export function peakAcross(sessions: SessionAudience[]): number {
   return peak;
 }
 
-/** pulled desc, then holdRate desc, then uniques desc. */
+/**
+ * crowd desc, then holdRate desc, then peak desc. Crowd — not raw uniques —
+ * is the number the board is about: who this artist actually brought.
+ */
 export function rankBoardRows<T extends BoardRow>(rows: T[]): T[] {
   return rows.slice().sort((a, b) => {
-    if (b.pulled !== a.pulled) return b.pulled - a.pulled;
+    if (b.crowd !== a.crowd) return b.crowd - a.crowd;
     if (b.holdRate !== a.holdRate) return b.holdRate - a.holdRate;
-    return b.uniques - a.uniques;
+    return b.peak - a.peak;
   });
 }
 
@@ -632,8 +809,9 @@ function pickBest(
 }
 
 /**
- * Hands out the four weekly badges. Each goes to at most one artist; ties are
- * broken by the earliest session. An artist may hold several.
+ * Hands out the five weekly badges. Each goes to at most one artist, and only
+ * when someone actually qualifies; ties are broken by the earliest session.
+ * An artist may hold several.
  *
  * Mutates and returns `rows` (their `badges` arrays).
  */
@@ -645,7 +823,7 @@ export function assignBadges(rows: BoardCandidate[]): BoardCandidate[] {
   };
 
   give(
-    pickBest(rows, (r) => r.pulled),
+    pickBest(rows, (r) => (r.pulled > 0 ? r.pulled : null)),
     "most-pulled",
   );
   give(
@@ -653,16 +831,24 @@ export function assignBadges(rows: BoardCandidate[]): BoardCandidate[] {
     "held-the-room",
   );
   give(
+    pickBest(rows, (r) => (r.follows > 0 ? r.follows : null)),
+    "most-follows",
+  );
+  // Only rows with real chat data compete — a null chat is "we don't know",
+  // not "nobody spoke", and must never lose or win this on a zero.
+  give(
     pickBest(rows, (r) =>
-      r.deltaUniques !== null && r.deltaUniques > 0 ? r.deltaUniques : null,
+      r.chat && r.uniques >= BADGE_MIN_UNIQUES
+        ? r.chat.chatters / r.uniques
+        : null,
     ),
-    "best-comeback",
+    "loudest-room",
   );
   give(
     pickBest(rows, (r) =>
-      r.uniques >= BADGE_MIN_UNIQUES ? r.cameBack / r.uniques : null,
+      r.deltaCrowd !== null && r.deltaCrowd > 0 ? r.deltaCrowd : null,
     ),
-    "stickiest",
+    "best-comeback",
   );
 
   return rows;
@@ -673,11 +859,15 @@ export function toBoardRow(c: BoardCandidate): BoardRow {
   return {
     artistName: c.artistName,
     artistImage: c.artistImage,
+    crowd: c.crowd,
     pulled: c.pulled,
+    returning: c.returning,
     uniques: c.uniques,
-    peak: c.peak,
     holdRate: c.holdRate,
-    deltaUniques: c.deltaUniques,
+    peak: c.peak,
+    follows: c.follows,
+    chat: c.chat,
+    deltaCrowd: c.deltaCrowd,
     shared: c.shared,
     badges: c.badges,
   };

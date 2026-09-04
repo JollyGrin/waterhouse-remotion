@@ -2,9 +2,13 @@ import { describe, expect, test } from "bun:test";
 import {
   analyseSession,
   assignBadges,
+  buildAttendance,
   buildExclusions,
   buildPresence,
+  chatStatsFor,
+  chatStatsOrNull,
   classifyViewer,
+  isMainArtist,
   computeHoldRate,
   initialsFromLogin,
   isBounced,
@@ -17,6 +21,7 @@ import {
   stayThresholdMin,
   type ArtistRef,
   type BoardCandidate,
+  type ChatMessage,
   type ChatterSnapshot,
   type ReservationRef,
   type StreamSession,
@@ -28,13 +33,26 @@ const BASE = Date.parse("2026-09-03T17:00:00Z");
 const at = (min: number) => BASE + min * MIN;
 const iso = (min: number) => new Date(at(min)).toISOString();
 
-function session(durationMin: number): StreamSession {
+function session(durationMin: number, follows = 0): StreamSession {
   return {
     start: iso(0),
     end: iso(durationMin),
     durationMin,
     peakViewers: 9,
     uniqueViewers: 10,
+    follows,
+  };
+}
+
+/** A session at an arbitrary offset, for the attendance-window tests. */
+function sessionAt(startMin: number, durationMin: number): StreamSession {
+  return {
+    start: iso(startMin),
+    end: iso(startMin + durationMin),
+    durationMin,
+    peakViewers: 1,
+    uniqueViewers: 1,
+    follows: 0,
   };
 }
 
@@ -127,40 +145,106 @@ describe("buildPresence", () => {
 
 // --- classification -------------------------------------------------------
 
-describe("classifyViewer", () => {
-  const prior = new Set(["regular", "backagain"]);
-  const previous = new Set(["backagain"]);
+describe("isMainArtist / classifyViewer", () => {
+  const prior = new Set(["loyal", "tourist"]);
 
-  test("nobody-has-seen-them is pulled", () => {
-    expect(classifyViewer("fresh", prior, previous)).toBe("pulled");
+  test("nobody has seen them before -> pulled", () => {
+    expect(
+      classifyViewer("fresh", prior, { artistSessions: 0, totalSessions: 0 }),
+    ).toBe("pulled");
   });
 
-  test("in the artist's previous session is cameBack", () => {
-    expect(classifyViewer("backagain", prior, previous)).toBe("cameBack");
+  test("pulled wins over returning however strong the record", () => {
+    const perfect = { artistSessions: 4, totalSessions: 4 };
+    expect(classifyViewer("loyal", prior, perfect)).toBe("returning");
+    // Same viewer, same record, but unseen in the 30-day window:
+    expect(classifyViewer("loyal", new Set(), perfect)).toBe("pulled");
   });
 
-  test("seen in the last 30 days but not last time is regular", () => {
-    expect(classifyViewer("regular", prior, previous)).toBe("regular");
+  test("half their recent sessions were this artist's -> returning", () => {
+    expect(
+      classifyViewer("loyal", prior, { artistSessions: 2, totalSessions: 4 }),
+    ).toBe("returning");
   });
 
-  test("pulled wins over cameBack when the 30-day window is empty", () => {
-    expect(classifyViewer("backagain", new Set(), previous)).toBe("pulled");
+  test("under half -> regular", () => {
+    expect(
+      classifyViewer("tourist", prior, { artistSessions: 1, totalSessions: 3 }),
+    ).toBe("regular");
+  });
+
+  test("a perfect ratio still needs at least one prior session", () => {
+    expect(isMainArtist({ artistSessions: 0, totalSessions: 0 })).toBe(false);
+    expect(isMainArtist(undefined)).toBe(false);
+    expect(
+      classifyViewer("loyal", prior, { artistSessions: 0, totalSessions: 2 }),
+    ).toBe("regular");
+  });
+
+  test("sessions nobody is booked on still count against the ratio", () => {
+    expect(isMainArtist({ artistSessions: 1, totalSessions: 2 })).toBe(true);
+    expect(isMainArtist({ artistSessions: 1, totalSessions: 3 })).toBe(false);
+  });
+});
+
+describe("buildAttendance", () => {
+  // Three sessions: two are ana's, one is bo's.
+  const attended = [
+    { session: sessionAt(0, 60), artistIds: ["ana"] },
+    { session: sessionAt(200, 60), artistIds: ["bo"] },
+    { session: sessionAt(400, 60), artistIds: ["ana"] },
+  ];
+  const snapshots: ChatterSnapshot[] = [
+    snap(10, [["regular", "reg"]]),
+    snap(20, [["regular", "reg"]]), // same session, counted once
+    snap(210, [["regular", "reg"]]),
+    snap(410, [["regular", "reg"]]),
+    snap(410, [["anafan", "fan"]]),
+  ];
+
+  test("counts distinct sessions, not snapshots", () => {
+    const map = buildAttendance(snapshots, attended, "ana", at(0), at(1000));
+    expect(map.get("regular")).toEqual({
+      artistSessions: 2,
+      totalSessions: 3,
+    });
+    expect(map.get("anafan")).toEqual({
+      artistSessions: 1,
+      totalSessions: 1,
+    });
+  });
+
+  test("honours the window bounds", () => {
+    const map = buildAttendance(snapshots, attended, "ana", at(300), at(1000));
+    expect(map.get("regular")).toEqual({
+      artistSessions: 1,
+      totalSessions: 1,
+    });
+  });
+
+  test("a viewer who never saw this artist has a zero numerator", () => {
+    const map = buildAttendance(snapshots, attended, "bo", at(0), at(1000));
+    expect(map.get("anafan")).toEqual({
+      artistSessions: 0,
+      totalSessions: 1,
+    });
+    expect(isMainArtist(map.get("anafan"))).toBe(false);
   });
 });
 
 // --- stayed / bounced -----------------------------------------------------
 
 describe("stayed and bounced", () => {
-  test("threshold is the floor for short streams", () => {
-    expect(stayThresholdMin(40)).toBe(30);
-    expect(isStayed(29.9, 40)).toBe(false);
-    expect(isStayed(30, 40)).toBe(true);
+  test("half an hour caps the threshold on a long set", () => {
+    expect(stayThresholdMin(153)).toBe(30);
+    expect(isStayed(29.9, 153)).toBe(false);
+    expect(isStayed(30, 153)).toBe(true);
   });
 
-  test("threshold is half the stream for long ones", () => {
-    expect(stayThresholdMin(153)).toBe(76.5);
-    expect(isStayed(76.4, 153)).toBe(false);
-    expect(isStayed(76.5, 153)).toBe(true);
+  test("a short set only asks for half of itself", () => {
+    expect(stayThresholdMin(40)).toBe(20);
+    expect(isStayed(19.9, 40)).toBe(false);
+    expect(isStayed(20, 40)).toBe(true);
   });
 
   test("bounced is strictly under 10 minutes", () => {
@@ -178,15 +262,15 @@ describe("stayed and bounced", () => {
 
 describe("quadrantFor", () => {
   test("covers all four corners", () => {
-    expect(quadrantFor(2, 0.5)).toBe("packed-held");
+    expect(quadrantFor(3, 0.5)).toBe("packed-held");
     expect(quadrantFor(5, 0.49)).toBe("hype-cliff");
-    expect(quadrantFor(1, 0.9)).toBe("small-loyal");
-    expect(quadrantFor(1, 0.2)).toBe("quiet");
+    expect(quadrantFor(2, 0.9)).toBe("small-loyal");
+    expect(quadrantFor(2, 0.2)).toBe("quiet");
   });
 
-  test("boundaries are inclusive", () => {
-    expect(quadrantFor(2, 0.5)).toBe("packed-held");
-    expect(quadrantFor(1, 0.5)).toBe("small-loyal");
+  test("the x axis is crowd, and 3 is the line", () => {
+    expect(quadrantFor(2, 0.5)).toBe("small-loyal");
+    expect(quadrantFor(3, 0.5)).toBe("packed-held");
   });
 });
 
@@ -281,14 +365,17 @@ function candidate(
   return {
     artistName: over.artistId,
     artistImage: null,
+    crowd: 0,
     pulled: 0,
+    returning: 0,
     uniques: 0,
-    peak: 0,
     holdRate: 0,
-    deltaUniques: null,
+    peak: 0,
+    follows: 0,
+    chat: null,
+    deltaCrowd: null,
     shared: false,
     badges: [],
-    cameBack: 0,
     firstSessionMs: 0,
     ...over,
   };
@@ -302,8 +389,9 @@ describe("assignBadges", () => {
         pulled: 5,
         uniques: 10,
         holdRate: 0.4,
-        cameBack: 1,
-        deltaUniques: 2,
+        follows: 7,
+        chat: { messages: 30, chatters: 2 },
+        deltaCrowd: 2,
         firstSessionMs: 1,
       }),
       candidate({
@@ -311,28 +399,29 @@ describe("assignBadges", () => {
         pulled: 1,
         uniques: 6,
         holdRate: 0.8,
-        cameBack: 4,
-        deltaUniques: 5,
+        follows: 1,
+        chat: { messages: 12, chatters: 5 },
+        deltaCrowd: 5,
         firstSessionMs: 2,
       }),
     ];
     assignBadges(rows);
-    expect(rows[0].badges).toEqual(["most-pulled"]);
+    expect(rows[0].badges).toEqual(["most-pulled", "most-follows"]);
     expect(rows[1].badges).toEqual([
       "held-the-room",
+      "loudest-room",
       "best-comeback",
-      "stickiest",
     ]);
   });
 
-  test("held-the-room and stickiest need at least 3 uniques", () => {
+  test("held-the-room and loudest-room need at least 3 uniques", () => {
     const rows = [
       candidate({
         artistId: "tiny",
         pulled: 1,
         uniques: 2,
         holdRate: 1,
-        cameBack: 2,
+        chat: { messages: 9, chatters: 2 },
         firstSessionMs: 1,
       }),
       candidate({
@@ -340,20 +429,57 @@ describe("assignBadges", () => {
         pulled: 0,
         uniques: 3,
         holdRate: 0.34,
-        cameBack: 1,
+        chat: { messages: 4, chatters: 1 },
         firstSessionMs: 2,
       }),
     ];
     assignBadges(rows);
     expect(rows[0].badges).toEqual(["most-pulled"]);
-    expect(rows[1].badges).toEqual(["held-the-room", "stickiest"]);
+    expect(rows[1].badges).toEqual(["held-the-room", "loudest-room"]);
+  });
+
+  test("loudest-room ignores rows with no chat data", () => {
+    const rows = [
+      candidate({ artistId: "unknown", uniques: 10, chat: null }),
+      candidate({
+        artistId: "known",
+        uniques: 4,
+        chat: { messages: 2, chatters: 1 },
+      }),
+    ];
+    assignBadges(rows);
+    expect(rows[0].badges.indexOf("loudest-room")).toBe(-1);
+    expect(rows[1].badges).toEqual(["loudest-room"]);
+  });
+
+  test("a week with no chat at all awards no loudest-room", () => {
+    const rows = [
+      candidate({ artistId: "ana", uniques: 9, chat: null }),
+      candidate({ artistId: "bo", uniques: 5, chat: null }),
+    ];
+    assignBadges(rows);
+    for (const row of rows) {
+      expect(row.badges.indexOf("loudest-room")).toBe(-1);
+    }
+  });
+
+  test("most-pulled and most-follows need a positive count", () => {
+    const rows = [
+      candidate({ artistId: "ana", pulled: 0, follows: 0, uniques: 5 }),
+      candidate({ artistId: "bo", pulled: 0, follows: 0, uniques: 5 }),
+    ];
+    assignBadges(rows);
+    for (const row of rows) {
+      expect(row.badges.indexOf("most-pulled")).toBe(-1);
+      expect(row.badges.indexOf("most-follows")).toBe(-1);
+    }
   });
 
   test("best-comeback needs a positive delta and goes unawarded otherwise", () => {
     const rows = [
-      candidate({ artistId: "ana", uniques: 5, deltaUniques: 0 }),
-      candidate({ artistId: "bo", uniques: 5, deltaUniques: -3 }),
-      candidate({ artistId: "cy", uniques: 5, deltaUniques: null }),
+      candidate({ artistId: "ana", uniques: 5, deltaCrowd: 0 }),
+      candidate({ artistId: "bo", uniques: 5, deltaCrowd: -3 }),
+      candidate({ artistId: "cy", uniques: 5, deltaCrowd: null }),
     ];
     assignBadges(rows);
     for (const row of rows) {
@@ -397,13 +523,89 @@ describe("peakAcross", () => {
 });
 
 describe("rankBoardRows", () => {
-  test("pulled desc, then holdRate desc, then uniques desc", () => {
+  test("crowd desc, then holdRate desc, then peak desc", () => {
     const rows = [
-      candidate({ artistId: "c", pulled: 1, holdRate: 0.9, uniques: 4 }),
-      candidate({ artistId: "a", pulled: 3, holdRate: 0.1, uniques: 4 }),
-      candidate({ artistId: "b", pulled: 1, holdRate: 0.9, uniques: 9 }),
+      candidate({ artistId: "c", crowd: 1, holdRate: 0.9, peak: 4 }),
+      candidate({ artistId: "a", crowd: 3, holdRate: 0.1, peak: 4 }),
+      candidate({ artistId: "b", crowd: 1, holdRate: 0.9, peak: 9 }),
     ];
     expect(rankBoardRows(rows).map((r) => r.artistId)).toEqual(["a", "b", "c"]);
+  });
+
+  test("a big raw audience does not outrank a bigger crowd", () => {
+    const rows = [
+      candidate({ artistId: "house-regulars", crowd: 1, uniques: 20 }),
+      candidate({ artistId: "brought-people", crowd: 4, uniques: 5 }),
+    ];
+    expect(rankBoardRows(rows)[0].artistId).toBe("brought-people");
+  });
+});
+
+// --- chat ----------------------------------------------------------------
+
+describe("chatStatsFor", () => {
+  const messages: ChatMessage[] = [
+    { timestamp: iso(5), userId: "a", username: "ana" },
+    { timestamp: iso(6), userId: "a", username: "ana" },
+    { timestamp: iso(7), userId: "b", username: "bo" },
+    { timestamp: iso(8), userId: "h", username: "waterhousestudios" },
+    { timestamp: iso(500), userId: "c", username: "cy" },
+    { timestamp: iso(205), userId: "a", username: "ana" },
+  ];
+
+  test("counts messages and distinct chatters inside the session", () => {
+    const stats = chatStatsFor(messages, [session(100)], buildExclusions([]));
+    expect(stats).toEqual({ messages: 3, chatters: 2 });
+  });
+
+  test("drops the house account and the artist", () => {
+    const stats = chatStatsFor(
+      messages,
+      [session(100)],
+      buildExclusions(["ana"]),
+    );
+    expect(stats).toEqual({ messages: 1, chatters: 1 });
+  });
+
+  test("chatters stay distinct across several sessions", () => {
+    const stats = chatStatsFor(
+      messages,
+      [session(100), sessionAt(200, 60)],
+      buildExclusions([]),
+    );
+    expect(stats).toEqual({ messages: 4, chatters: 2 });
+  });
+
+  test("a window with nothing in it is a real zero, not null", () => {
+    expect(chatStatsFor([], [session(100)], buildExclusions([]))).toEqual({
+      messages: 0,
+      chatters: 0,
+    });
+  });
+});
+
+describe("chatStatsOrNull", () => {
+  const houseOnly: ChatMessage[] = [
+    { timestamp: iso(5), userId: "h", username: "waterhousestudios" },
+  ];
+
+  test("no rows captured in the window -> null, never a zero", () => {
+    expect(chatStatsOrNull([], [session(100)], buildExclusions([]))).toBeNull();
+  });
+
+  test("rows outside every session window still count as no data", () => {
+    const elsewhere: ChatMessage[] = [
+      { timestamp: iso(500), userId: "a", username: "ana" },
+    ];
+    expect(
+      chatStatsOrNull(elsewhere, [session(100)], buildExclusions([])),
+    ).toBeNull();
+  });
+
+  test("captured but silent after exclusions is a real zero", () => {
+    expect(
+      chatStatsOrNull(houseOnly, [session(100)], buildExclusions([])),
+    ).toEqual({ messages: 0, chatters: 0 });
   });
 });
 
@@ -422,21 +624,28 @@ describe("analyseSession", () => {
     }
 
     const result = analyseSession({
-      session: session(100),
+      session: session(100, 3),
       snapshots,
       exclusions: buildExclusions([null]),
       priorUserIds: new Set(["stayer"]),
-      previousSessionUserIds: new Set(["stayer"]),
+      attendance: new Map([
+        ["stayer", { artistSessions: 3, totalSessions: 4 }],
+      ]),
+      chat: { messages: 8, chatters: 1 },
       slotIso: iso(0),
       shared: false,
     });
 
     const a = result.audience;
     expect(a.uniques).toBe(2);
-    expect(a.cameBack).toBe(1);
+    expect(a.returning).toBe(1);
     expect(a.pulled).toBe(1);
     expect(a.regulars).toBe(0);
+    expect(a.crowd).toBe(2);
     expect(a.holdRate).toBe(0.5);
+    expect(a.follows).toBe(3);
+    expect(a.chat).toEqual({ messages: 8, chatters: 1 });
+    // crowd 2 is under the "many" line of 3, holdRate is on the line.
     expect(a.quadrant).toBe("small-loyal");
     expect(a.viewers.map((v) => v.initials)).toEqual(["AB", "QU"]);
     expect(a.viewers[0].stayed).toBe(true);
@@ -447,5 +656,19 @@ describe("analyseSession", () => {
       "bouncer",
       "stayer",
     ]);
+  });
+
+  test("chat null survives to the props untouched", () => {
+    const result = analyseSession({
+      session: session(60),
+      snapshots: [snap(1, [["a", "ana"]])],
+      exclusions: buildExclusions([]),
+      priorUserIds: new Set(),
+      attendance: new Map(),
+      chat: null,
+      shared: false,
+    });
+    expect(result.audience.chat).toBeNull();
+    expect(result.audience.follows).toBe(0);
   });
 });

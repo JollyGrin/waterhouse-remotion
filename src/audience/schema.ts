@@ -16,7 +16,7 @@ import { z } from "zod";
 export const viewerSchema = z.object({
   /** Two characters derived from the login. Never the login itself. */
   initials: z.string().length(2),
-  kind: z.enum(["pulled", "cameBack", "regular"]),
+  kind: z.enum(["pulled", "returning", "regular"]),
   /** Minutes after the session start when they were first seen. */
   arrivedMin: z.number(),
   /** Minutes after the session start when they were last seen. */
@@ -25,6 +25,15 @@ export const viewerSchema = z.object({
   watchMin: z.number(),
   /** watchMin >= max(30, half the session). */
   stayed: z.boolean(),
+});
+
+/**
+ * Chat capture is a later phase of the logger. `null` means we have no chat
+ * data for the window at all — it is NOT the same as "nobody spoke".
+ */
+export const chatStatsSchema = z.object({
+  messages: z.number(),
+  chatters: z.number(),
 });
 
 export const quadrantSchema = z.enum([
@@ -47,10 +56,15 @@ export const sessionAudienceSchema = z.object({
   peak: z.number(),
   /** Distinct viewers after exclusions. */
   uniques: z.number(),
+  /** pulled + returning — the audience this artist brought. */
+  crowd: z.number(),
   pulled: z.number(),
-  cameBack: z.number(),
+  returning: z.number(),
   regulars: z.number(),
   holdRate: z.number(),
+  /** New follows during the session, from the logger's interaction counts. */
+  follows: z.number(),
+  chat: chatStatsSchema.nullable(),
   quadrant: quadrantSchema,
   /** The session was credited to more than one artist. */
   shared: z.boolean(),
@@ -74,26 +88,36 @@ export const artistRecapPropsSchema = z.object({
   sessions: z.array(sessionAudienceSchema),
   /** Best uniques the artist has ever posted, across all known sessions. */
   bestUniques: z.number(),
+  /** Best crowd (pulled + returning) across all known sessions. */
+  bestCrowd: z.number(),
   nextSlot: nextSlotSchema.nullable(),
 });
 
 export const badgeSchema = z.enum([
   "most-pulled",
   "held-the-room",
+  "most-follows",
+  "loudest-room",
   "best-comeback",
-  "stickiest",
 ]);
 
 export const boardRowSchema = z.object({
   artistName: z.string(),
   artistImage: z.string().nullable(),
+  /** pulled + returning. This is what the board is ranked on. */
+  crowd: z.number(),
   pulled: z.number(),
+  returning: z.number(),
   uniques: z.number(),
+  holdRate: z.number(),
   /** Highest peak concurrent viewers across their sessions this week. */
   peak: z.number(),
-  holdRate: z.number(),
-  /** uniques minus the artist's previous session, null if it is their first. */
-  deltaUniques: z.number().nullable(),
+  /** Follows summed across their sessions this week. */
+  follows: z.number(),
+  /** Summed messages and distinct chatters, or null when chat has no data. */
+  chat: chatStatsSchema.nullable(),
+  /** crowd minus the artist's previous session, null if it is their first. */
+  deltaCrowd: z.number().nullable(),
   shared: z.boolean(),
   badges: z.array(badgeSchema),
 });
@@ -120,7 +144,9 @@ export const houseWeeklyPropsSchema = z.object({
   shows: z.number(),
   uniques: z.number(),
   pulled: z.number(),
-  /** Ranked: pulled desc, then holdRate desc, then uniques desc. */
+  /** Follows across the whole week. */
+  follows: z.number(),
+  /** Ranked: crowd desc, then holdRate desc, then peak desc. */
   rows: z.array(boardRowSchema),
   /** Eight points, oldest to newest. */
   houseSeries: z.array(houseSeriesPointSchema),
@@ -128,6 +154,7 @@ export const houseWeeklyPropsSchema = z.object({
 });
 
 export type Viewer = z.infer<typeof viewerSchema>;
+export type ChatStats = z.infer<typeof chatStatsSchema>;
 export type Quadrant = z.infer<typeof quadrantSchema>;
 export type SessionAudience = z.infer<typeof sessionAudienceSchema>;
 export type NextSlot = z.infer<typeof nextSlotSchema>;

@@ -4,45 +4,58 @@
   "shows": 5,
   "uniques": 24,
   "pulled": 11,
+  "follows": 3,
   "rows": [
     {
       "artistName": "Tj Gee",
       "artistImage": "https://cdn.waterhousestudios.nl/artists/ee46b403-8e78-4591-bbaa-eb1cdc599491/1788526895394.jpg",
+      "crowd": 3,
       "pulled": 3,
+      "returning": 0,
       "uniques": 9,
+      "holdRate": 0.89,
       "peak": 9,
-      "holdRate": 0.44,
-      "deltaUniques": 0,
+      "follows": 1,
+      "chat": null,
+      "deltaCrowd": 1,
       "shared": false,
       "badges": [
-        "most-pulled"
+        "most-pulled",
+        "held-the-room",
+        "best-comeback"
       ]
     },
     {
       "artistName": "Fien",
       "artistImage": "https://cdn.waterhousestudios.nl/artists/019aebf5-e982-7cb0-8fa5-a9aed2920a99/1788261465068.jpg",
+      "crowd": 2,
       "pulled": 2,
+      "returning": 0,
       "uniques": 5,
-      "peak": 6,
       "holdRate": 0.8,
-      "deltaUniques": null,
+      "peak": 6,
+      "follows": 1,
+      "chat": null,
+      "deltaCrowd": null,
       "shared": false,
       "badges": [
-        "held-the-room"
+        "most-follows"
       ]
     },
     {
       "artistName": "Denzo",
       "artistImage": "https://cdn.waterhousestudios.nl/artists/019ad5fb-59f4-72ef-b661-988ce2b7a1e4/1788277486658.png",
+      "crowd": 2,
       "pulled": 1,
+      "returning": 1,
       "uniques": 7,
+      "holdRate": 0.57,
       "peak": 5,
-      "holdRate": 0.29,
-      "deltaUniques": -11,
+      "follows": 0,
+      "chat": null,
+      "deltaCrowd": -9,
       "shared": false,
-      "badges": [
-        "stickiest"
-      ]
+      "badges": []
     }
   ],
   "houseSeries": [

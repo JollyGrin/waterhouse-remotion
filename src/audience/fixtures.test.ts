@@ -11,7 +11,8 @@ describe("checked-in fixtures", () => {
     const recap = artistRecapPropsSchema.parse(read("recap.json"));
     expect(recap.sessions.length).toBeGreaterThan(0);
     for (const s of recap.sessions) {
-      expect(s.pulled + s.cameBack + s.regulars).toBe(s.uniques);
+      expect(s.pulled + s.returning + s.regulars).toBe(s.uniques);
+      expect(s.crowd).toBe(s.pulled + s.returning);
       expect(s.viewers.length).toBe(s.uniques);
       for (let i = 1; i < s.viewers.length; i++) {
         expect(s.viewers[i].arrivedMin).toBeGreaterThanOrEqual(
@@ -36,15 +37,18 @@ describe("checked-in fixtures", () => {
     const weekly = houseWeeklyPropsSchema.parse(read("weekly.json"));
     expect(weekly.houseSeries.length).toBe(8);
     expect(weekly.rows.length).toBeGreaterThan(0);
+    // Ranked on crowd, not raw uniques.
     for (let i = 1; i < weekly.rows.length; i++) {
-      expect(weekly.rows[i - 1].pulled).toBeGreaterThanOrEqual(
-        weekly.rows[i].pulled,
+      expect(weekly.rows[i - 1].crowd).toBeGreaterThanOrEqual(
+        weekly.rows[i].crowd,
       );
     }
-    // Peak is display-only, but every artist on the board streamed at
-    // least once, so it must be a positive count.
     for (const row of weekly.rows) {
+      // Peak is display-only, but every artist on the board streamed at
+      // least once, so it must be a positive count.
       expect(row.peak).toBeGreaterThan(0);
+      expect(row.crowd).toBe(row.pulled + row.returning);
+      expect(row.crowd).toBeLessThanOrEqual(row.uniques);
     }
     // Every badge is held by at most one artist.
     const seen = new Set<string>();

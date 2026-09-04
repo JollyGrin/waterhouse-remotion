@@ -15,8 +15,10 @@
  * Flags:
  *   --n <count>       sessions in an artist recap (default 4)
  *   --end <date>      last day of the window, YYYY-MM-DD (default: today)
- *   --days <count>    how far back to pull raw data (default 100, 200 for
- *                     --fixtures so recaps reach back a full set of shows)
+ *   --days <count>    override the raw-data window. By default it is derived
+ *                     from the sessions being analysed, so the 30-day
+ *                     "pulled" and 90-day "returning" lookbacks always have
+ *                     history behind them.
  *   --out <path>      where to write; defaults to out/<something>.json
  *
  * Everything it reads is public; no token is needed.
@@ -27,11 +29,14 @@ import { dirname } from "path";
 import {
   analyseSession,
   assignBadges,
+  buildAttendance,
   buildExclusions,
+  chatStatsOrNull,
   dateLabel,
   dayLabel,
   computeHoldRate,
   matchSessionToArtists,
+  mainArtistWindowStart,
   peakAcross,
   pulledWindowStart,
   rangeLabel,
@@ -45,7 +50,9 @@ import {
   userIdsInSessions,
   weekLabel,
   type ArtistRef,
+  type AttendedSession,
   type BoardCandidate,
+  type ChatMessage,
   type ChatterSnapshot,
   type ReservationRef,
   type SessionMatch,
@@ -64,9 +71,10 @@ const LOGGER_BASE = "https://event-logger-production.up.railway.app";
 const API_BASE = "https://api.waterhousestudios.nl/api";
 
 const PAGE_SIZE = 1000;
-const DEFAULT_WINDOW_DAYS = 100;
-// Fixtures reach further back so the recap fixture has a full set of shows.
-const FIXTURE_WINDOW_DAYS = 200;
+/** Sessions and reservations are cheap, so we scan a wide net for them. */
+const SCAN_DAYS = 400;
+/** Cushion on the computed snapshot window, so a lookback never clips. */
+const WINDOW_MARGIN_DAYS = 3;
 const DEFAULT_RECAP_SESSIONS = 4;
 const HOUSE_SERIES_WEEKS = 8;
 
@@ -81,6 +89,13 @@ interface RawSession {
   duration_min: number;
   peak_viewers: number;
   unique_viewers: number;
+  interactions: { follows?: number } | null;
+}
+
+interface RawChatEvent {
+  timestamp: string;
+  user_id: string;
+  username: string;
 }
 
 interface RawSnapshot {
@@ -136,6 +151,7 @@ async function fetchSessions(
         durationMin: s.duration_min,
         peakViewers: s.peak_viewers,
         uniqueViewers: s.unique_viewers,
+        follows: (s.interactions && s.interactions.follows) || 0,
       });
     }
     offset += page.sessions.length;
@@ -169,6 +185,36 @@ async function fetchSnapshots(
     if (page.snapshots.length < PAGE_SIZE) break;
   }
   process.stdout.write("\n");
+  return out;
+}
+
+/**
+ * Every chat line in the window. Chat capture is a later phase of the logger,
+ * so an empty result is expected for now and means "no data", not "silence" —
+ * `chatStatsOrNull` turns an empty session window into a null rather than a 0.
+ */
+async function fetchChat(
+  startIso: string,
+  endIso: string,
+): Promise<ChatMessage[]> {
+  const out: ChatMessage[] = [];
+  let offset = 0;
+  for (;;) {
+    const url =
+      `${LOGGER_BASE}/api/events/chat?start=${encodeURIComponent(startIso)}` +
+      `&end=${encodeURIComponent(endIso)}&limit=${PAGE_SIZE}&offset=${offset}`;
+    const page = await getJson<{ events: RawChatEvent[] | null }>(url);
+    const events = page.events || [];
+    for (const e of events) {
+      out.push({
+        timestamp: e.timestamp,
+        userId: e.user_id,
+        username: e.username,
+      });
+    }
+    offset += events.length;
+    if (events.length < PAGE_SIZE) break;
+  }
   return out;
 }
 
@@ -256,42 +302,105 @@ async function usableImage(url: string | null): Promise<string | null> {
 
 // --- Analysis context -----------------------------------------------------
 
+/** Sessions joined to their artists — enough to decide how far back to fetch. */
+interface Joined {
+  sessions: StreamSession[];
+  matches: Map<string, SessionMatch>;
+}
+
+/** The cheap half of the load: what happened, and who it belonged to. */
+interface Scan extends Joined {
+  reservations: ReservationRef[];
+}
+
 interface Context {
   sessions: StreamSession[];
   snapshots: ChatterSnapshot[];
+  chat: ChatMessage[];
   reservations: ReservationRef[];
   /** Session index (by start ISO) -> the artists it belongs to. */
   matches: Map<string, SessionMatch>;
+  /** Sessions pre-joined to their artists, for the 90-day attendance maths. */
+  attended: AttendedSession[];
   /** Oldest snapshot we hold; anything before this is a blind spot. */
   dataStartMs: number;
 }
 
-async function loadContext(endMs: number, days: number): Promise<Context> {
-  const startIso = new Date(endMs - days * MS_PER_DAY).toISOString();
+/**
+ * Sessions and bookings only. Both are small, so this reaches back a long way
+ * and lets the caller work out how much snapshot history it actually needs.
+ */
+async function scanSessions(endMs: number): Promise<Scan> {
+  const startIso = new Date(endMs - SCAN_DAYS * MS_PER_DAY).toISOString();
   const endIso = new Date(endMs).toISOString();
 
-  console.log(`Window: ${startIso} -> ${endIso}`);
   const reservations = await fetchReservations();
   console.log(`  reservations: ${reservations.length}`);
   const sessions = await fetchSessions(startIso, endIso);
-  console.log(`  sessions: ${sessions.length}`);
-  const snapshots = await fetchSnapshots(startIso, endIso);
+  console.log(`  sessions: ${sessions.length} (last ${SCAN_DAYS} days)`);
 
   const matches = new Map<string, SessionMatch>();
   for (const s of sessions) {
     matches.set(s.start, matchSessionToArtists(s, reservations));
   }
+  return { sessions, reservations, matches };
+}
+
+/**
+ * The expensive half: snapshots and chat for `[startMs, endMs]`. The window
+ * is computed from the sessions we mean to analyse, so the 30-day "pulled"
+ * and 90-day "returning" lookbacks always have data behind them without
+ * pulling a year of polls we would never read.
+ */
+async function loadContext(
+  scan: Scan,
+  startMs: number,
+  endMs: number,
+): Promise<Context> {
+  const startIso = new Date(startMs).toISOString();
+  const endIso = new Date(endMs).toISOString();
+  console.log(`Data window: ${startIso} -> ${endIso}`);
+
+  const snapshots = await fetchSnapshots(startIso, endIso);
+  const chat = await fetchChat(startIso, endIso);
+  console.log(
+    chat.length > 0
+      ? `  chat: ${chat.length} messages in the window`
+      : "  chat: no rows - every session's chat will be null",
+  );
+
+  const sessions = scan.sessions.filter((s) => toMs(s.start) >= startMs);
+  const matches = new Map<string, SessionMatch>();
+  const attended: AttendedSession[] = [];
+  for (const s of sessions) {
+    const match = scan.matches.get(s.start) || {
+      artists: [],
+      reservation: null,
+      shared: false,
+    };
+    matches.set(s.start, match);
+    attended.push({ session: s, artistIds: match.artists.map((a) => a.id) });
+  }
 
   return {
     sessions,
     snapshots,
-    reservations,
+    chat,
+    reservations: scan.reservations,
     matches,
-    dataStartMs: endMs - days * MS_PER_DAY,
+    attended,
+    dataStartMs: startMs,
   };
 }
 
-function matchFor(ctx: Context, session: StreamSession): SessionMatch {
+/** How far back a session must see for both lookbacks to be complete. */
+function requiredStartFor(sessionStartMs: number): number {
+  return (
+    mainArtistWindowStart(sessionStartMs) - WINDOW_MARGIN_DAYS * MS_PER_DAY
+  );
+}
+
+function matchFor(ctx: Joined, session: StreamSession): SessionMatch {
   return (
     ctx.matches.get(session.start) || {
       artists: [],
@@ -302,22 +411,13 @@ function matchFor(ctx: Context, session: StreamSession): SessionMatch {
 }
 
 /** Sessions credited to one artist, oldest first. */
-function sessionsForArtist(ctx: Context, artistId: string): StreamSession[] {
+function sessionsForArtist(ctx: Joined, artistId: string): StreamSession[] {
   return ctx.sessions.filter((s) => {
     for (const a of matchFor(ctx, s).artists) {
       if (a.id === artistId) return true;
     }
     return false;
   });
-}
-
-function sessionUserIds(ctx: Context, session: StreamSession): Set<string> {
-  return userIdsInSessions(
-    ctx.snapshots,
-    [session],
-    toMs(session.start),
-    toMs(session.end) + 1,
-  );
 }
 
 interface Analysed {
@@ -330,42 +430,46 @@ interface Analysed {
 const warned = new Set<string>();
 
 /**
- * Run one session through the metrics module, resolving both lookbacks:
- * everyone seen in the previous 30 days, and everyone in `previous`.
+ * Run one session through the metrics module, resolving both lookbacks: the
+ * 30-day "has anyone seen you before" window, and the 90-day attendance
+ * record that decides whether this artist is the viewer's main artist.
  */
 function analyse(
   ctx: Context,
   session: StreamSession,
-  artist: ArtistRef | null,
-  previous: StreamSession | null,
+  artist: ArtistRef,
 ): Analysed {
   const match = matchFor(ctx, session);
   const sStart = toMs(session.start);
   const lookbackStart = pulledWindowStart(sStart);
-  if (lookbackStart < ctx.dataStartMs && !warned.has(session.start)) {
+  const mainStart = mainArtistWindowStart(sStart);
+  if (mainStart < ctx.dataStartMs && !warned.has(session.start)) {
     warned.add(session.start);
     console.warn(
-      `  ! ${session.start}: 30-day lookback reaches before the fetched window; "pulled" may be overstated (raise --days)`,
+      `  ! ${session.start}: 90-day lookback reaches before the fetched window; "pulled"/"returning" may be overstated (raise --days)`,
     );
   }
 
-  const logins: Array<string | null> = artist
-    ? [artist.twitchLogin]
-    : match.artists.map((a) => a.twitchLogin);
+  const exclusions = buildExclusions([artist.twitchLogin]);
 
   const result = analyseSession({
     session,
     snapshots: ctx.snapshots,
-    exclusions: buildExclusions(logins),
+    exclusions,
     priorUserIds: userIdsInSessions(
       ctx.snapshots,
       ctx.sessions,
       lookbackStart,
       sStart,
     ),
-    previousSessionUserIds: previous
-      ? sessionUserIds(ctx, previous)
-      : new Set<string>(),
+    attendance: buildAttendance(
+      ctx.snapshots,
+      ctx.attended,
+      artist.id,
+      mainStart,
+      sStart,
+    ),
+    chat: chatStatsOrNull(ctx.chat, [session], exclusions),
     slotIso: match.reservation ? match.reservation.start : null,
     shared: match.shared,
   });
@@ -375,10 +479,13 @@ function analyse(
 
 // --- artist recap ---------------------------------------------------------
 
-function findArtist(ctx: Context, query: string): ArtistRef | null {
+function findArtist(
+  reservations: ReservationRef[],
+  query: string,
+): ArtistRef | null {
   const needle = query.trim().toLowerCase();
   let fuzzy: ArtistRef | null = null;
-  for (const r of ctx.reservations) {
+  for (const r of reservations) {
     for (const a of r.artists) {
       const name = a.stageName.toLowerCase();
       if (name === needle) return a;
@@ -401,14 +508,15 @@ async function buildArtistRecap(
     );
   }
 
-  const analysed: Analysed[] = [];
-  for (let i = 0; i < all.length; i++) {
-    analysed.push(analyse(ctx, all[i], artist, i > 0 ? all[i - 1] : null));
-  }
+  const analysed: Analysed[] = all.map((session) =>
+    analyse(ctx, session, artist),
+  );
 
   let bestUniques = 0;
+  let bestCrowd = 0;
   for (const a of analysed) {
     bestUniques = Math.max(bestUniques, a.audience.uniques);
+    bestCrowd = Math.max(bestCrowd, a.audience.crowd);
   }
 
   const shown = analysed.slice(Math.max(0, analysed.length - n));
@@ -431,6 +539,7 @@ async function buildArtistRecap(
     artistImage: await usableImage(artist.image),
     sessions: shown.map((a) => a.audience),
     bestUniques,
+    bestCrowd,
     nextSlot: next
       ? {
           dayLabel: dayLabel(next.start),
@@ -495,10 +604,7 @@ async function buildHouseWeekly(
   for (const session of inWindow) {
     const match = matchFor(ctx, session);
     for (const artist of match.artists) {
-      const history = sessionsForArtist(ctx, artist.id);
-      const idx = history.findIndex((s) => s.start === session.start);
-      const previous = idx > 0 ? history[idx - 1] : null;
-      const a = analyse(ctx, session, artist, previous);
+      const a = analyse(ctx, session, artist);
       const bucket = buckets.get(artist.id);
       if (bucket) {
         bucket.analysed.push(a);
@@ -532,12 +638,24 @@ async function buildHouseWeekly(
     const peak = peakAcross(ordered.map((a) => a.audience));
 
     let pulled = 0;
-    let cameBack = 0;
+    let returning = 0;
     for (const kind of kinds.values()) {
       if (kind === "pulled") pulled++;
-      else if (kind === "cameBack") cameBack++;
+      else if (kind === "returning") returning++;
     }
     const uniques = kinds.size;
+    const crowd = pulled + returning;
+
+    let follows = 0;
+    for (const a of ordered) follows += a.audience.follows;
+
+    // Chatters are distinct across the week, so this is computed over the
+    // whole set of sessions rather than summed per session.
+    const chat = chatStatsOrNull(
+      ctx.chat,
+      ordered.map((a) => a.session),
+      buildExclusions([bucket.artist.twitchLogin]),
+    );
 
     // Delta against the artist's own last session before this window.
     const history = sessionsForArtist(ctx, bucket.artist.id);
@@ -545,30 +663,25 @@ async function buildHouseWeekly(
     for (const s of history) {
       if (toMs(s.start) < windowStartMs) prior = s;
     }
-    let deltaUniques: number | null = null;
-    if (prior) {
-      const priorIdx = history.findIndex((s) => s.start === prior!.start);
-      const priorAnalysis = analyse(
-        ctx,
-        prior,
-        bucket.artist,
-        priorIdx > 0 ? history[priorIdx - 1] : null,
-      );
-      deltaUniques = uniques - priorAnalysis.audience.uniques;
-    }
+    const deltaCrowd = prior
+      ? crowd - analyse(ctx, prior, bucket.artist).audience.crowd
+      : null;
 
     candidates.push({
       artistId: bucket.artist.id,
       artistName: bucket.artist.stageName,
       artistImage: bucket.artist.image,
+      crowd,
       pulled,
+      returning,
       uniques,
-      peak,
       holdRate: computeHoldRate(stayed.size, uniques),
-      deltaUniques,
+      peak,
+      follows,
+      chat,
+      deltaCrowd,
       shared: bucket.shared,
       badges: [],
-      cameBack,
       firstSessionMs: toMs(ordered[0].session.start),
     });
   }
@@ -580,6 +693,9 @@ async function buildHouseWeekly(
   }
 
   // House totals.
+  let houseFollows = 0;
+  for (const s of inWindow) houseFollows += s.follows;
+
   const houseIds = userIdsInSessions(
     ctx.snapshots,
     ctx.sessions,
@@ -626,14 +742,8 @@ async function buildHouseWeekly(
       const history = sessionsForArtist(ctx, artist.id);
       let beat: number | null = null;
       if (history.length > 0) {
-        const last = history[history.length - 1];
-        const lastIdx = history.length - 1;
-        beat = analyse(
-          ctx,
-          last,
-          artist,
-          lastIdx > 0 ? history[lastIdx - 1] : null,
-        ).audience.uniques;
+        beat = analyse(ctx, history[history.length - 1], artist).audience
+          .uniques;
       }
       nextWeek.push({
         dayLabel: dayLabel(r.start),
@@ -653,6 +763,7 @@ async function buildHouseWeekly(
     shows: inWindow.length,
     uniques: houseIds.size,
     pulled: housePulled(ctx, windowStartMs, windowEndMs),
+    follows: houseFollows,
     rows: ranked.map(toBoardRow),
     houseSeries,
     nextWeek,
@@ -709,34 +820,132 @@ function slugify(name: string): string {
   );
 }
 
+/** The recap fixture follows whoever played most recently. */
+function mostRecentArtist(scan: Scan): ArtistRef | null {
+  for (let i = scan.sessions.length - 1; i >= 0; i--) {
+    const artists = matchFor(scan, scan.sessions[i]).artists;
+    if (artists.length > 0) return artists[0];
+  }
+  return null;
+}
+
+/** Earliest instant that lets every session in `sessions` be analysed fully. */
+function requiredStartOver(sessions: StreamSession[]): number {
+  let earliest = Number.POSITIVE_INFINITY;
+  for (const s of sessions) {
+    earliest = Math.min(earliest, requiredStartFor(toMs(s.start)));
+  }
+  return earliest;
+}
+
+/**
+ * Earliest instant an artist recap has to be able to see.
+ *
+ * The recap analyses every session of the artist inside the window, not just
+ * the `n` it shows, so widening the window can pull in an older session that
+ * in turn needs more history. Iterate until that settles.
+ */
+function recapStartFor(scan: Scan, artist: ArtistRef, n: number): number {
+  const all = sessionsForArtist(scan, artist.id);
+  if (all.length === 0) {
+    throw new Error(
+      `No sessions matched "${artist.stageName}" in the last ${SCAN_DAYS} days.`,
+    );
+  }
+  let start = requiredStartFor(toMs(all[Math.max(0, all.length - n)].start));
+  for (;;) {
+    const included = all.filter((s) => toMs(s.start) >= start);
+    const next = requiredStartOver(included);
+    if (next >= start) return start;
+    start = next;
+  }
+}
+
+/**
+ * Earliest instant a weekly board has to be able to see. Besides the week
+ * itself, the board analyses each artist's previous session (for
+ * `deltaCrowd`) and the most recent session of everyone booked next week
+ * (for `beat`) — both of which can be months old.
+ */
+function weeklyStartFor(
+  scan: Scan,
+  windowStartMs: number,
+  windowEndMs: number,
+): number {
+  const analysed: StreamSession[] = [];
+  const artistIds = new Set<string>();
+
+  for (const s of scan.sessions) {
+    const t = toMs(s.start);
+    if (t < windowStartMs || t >= windowEndMs) continue;
+    analysed.push(s);
+    for (const a of matchFor(scan, s).artists) artistIds.add(a.id);
+  }
+
+  // Everyone booked in the week after the window, for the "beat" number.
+  for (const r of scan.reservations) {
+    const t = toMs(r.start);
+    if (r.status !== "approved") continue;
+    if (t < windowEndMs || t >= windowEndMs + 7 * MS_PER_DAY) continue;
+    for (const a of r.artists) artistIds.add(a.id);
+  }
+
+  for (const artistId of artistIds) {
+    const history = sessionsForArtist(scan, artistId);
+    if (history.length > 0) analysed.push(history[history.length - 1]);
+    let prior: StreamSession | null = null;
+    for (const s of history) {
+      if (toMs(s.start) < windowStartMs) prior = s;
+    }
+    if (prior) analysed.push(prior);
+  }
+
+  const seriesStart = windowEndMs - HOUSE_SERIES_WEEKS * 7 * MS_PER_DAY;
+  return Math.min(
+    requiredStartOver(analysed),
+    // The house series only needs the 30-day "pulled" lookback per block.
+    pulledWindowStart(seriesStart) - WINDOW_MARGIN_DAYS * MS_PER_DAY,
+  );
+}
+
 async function main() {
   const mode = process.argv[2];
   const fixtures = hasFlag("fixtures");
-  const days = Number(
-    flag("days") || (fixtures ? FIXTURE_WINDOW_DAYS : DEFAULT_WINDOW_DAYS),
-  );
   const nowMs = Date.now();
   const endMs = endOfDayMs(flag("end"), nowMs);
-  const ctx = await loadContext(Math.min(endMs, nowMs), days);
+  const scanEndMs = Math.min(endMs, nowMs);
+
+  const scan = await scanSessions(scanEndMs);
+
+  // `--days` forces the window; otherwise it is derived from the sessions we
+  // are about to analyse, so both lookbacks always have data behind them.
+  const forcedDays = flag("days");
+  const startFor = (derived: number) =>
+    forcedDays ? scanEndMs - Number(forcedDays) * MS_PER_DAY : derived;
 
   if (fixtures) {
-    // Recap: whoever played most recently. Weekly: the last full 7 days.
-    let artist: ArtistRef | null = null;
-    for (let i = ctx.sessions.length - 1; i >= 0 && !artist; i--) {
-      const artists = matchFor(ctx, ctx.sessions[i]).artists;
-      if (artists.length > 0) artist = artists[0];
-    }
+    const artist = mostRecentArtist(scan);
     if (!artist) throw new Error("No session in the window matched an artist.");
+
+    const weekEnd = endMs;
+    const ctx = await loadContext(
+      scan,
+      startFor(
+        Math.min(
+          recapStartFor(scan, artist, DEFAULT_RECAP_SESSIONS),
+          weeklyStartFor(scan, weekEnd - 7 * MS_PER_DAY, weekEnd),
+        ),
+      ),
+      scanEndMs,
+    );
 
     console.log(`\nRecap fixture: ${artist.stageName}`);
     const recap = artistRecapPropsSchema.parse(
       await buildArtistRecap(ctx, artist, DEFAULT_RECAP_SESSIONS, nowMs),
     );
-    const recapJson = JSON.stringify(recap, null, 2);
-    assertNoLogins(recapJson, ctx);
+    assertNoLogins(JSON.stringify(recap, null, 2), ctx);
     write("src/audience/fixtures/recap.json", recap);
 
-    const weekEnd = endMs;
     console.log(
       `Weekly fixture: 7 days ending ${new Date(weekEnd - 1).toISOString()}`,
     );
@@ -753,19 +962,26 @@ async function main() {
     if (!name || name.indexOf("--") === 0) {
       throw new Error(`Usage: bun scripts/fetch-audience.ts artist "<name>"`);
     }
-    const artist = findArtist(ctx, name);
+    const artist = findArtist(scan.reservations, name);
     if (!artist) throw new Error(`No artist matching "${name}".`);
     const n = Number(flag("n") || DEFAULT_RECAP_SESSIONS);
+    const ctx = await loadContext(
+      scan,
+      startFor(recapStartFor(scan, artist, n)),
+      scanEndMs,
+    );
+
     const props = artistRecapPropsSchema.parse(
       await buildArtistRecap(ctx, artist, n, nowMs),
     );
-    const json = JSON.stringify(props, null, 2);
-    assertNoLogins(json, ctx);
+    assertNoLogins(JSON.stringify(props, null, 2), ctx);
     for (const s of props.sessions) {
       console.log(
-        `  ${s.dateLabel} ${s.slotLabel}: peak ${s.peak}, ${s.uniques} uniques ` +
-          `(${s.pulled} pulled / ${s.cameBack} back / ${s.regulars} regular), ` +
-          `hold ${s.holdRate}, ${s.quadrant}`,
+        `  ${s.dateLabel} ${s.slotLabel}: peak ${s.peak}, ${s.uniques} uniques, ` +
+          `crowd ${s.crowd} (${s.pulled} pulled / ${s.returning} returning / ` +
+          `${s.regulars} regular), hold ${s.holdRate}, ${s.follows} follows, ` +
+          `chat ${s.chat ? `${s.chat.messages}/${s.chat.chatters}` : "n/a"}, ` +
+          `${s.quadrant}`,
       );
     }
     write(flag("out") || `out/recap-${slugify(artist.stageName)}.json`, props);
@@ -773,17 +989,26 @@ async function main() {
   }
 
   if (mode === "week") {
+    const windowStartMs = endMs - 7 * MS_PER_DAY;
+    const ctx = await loadContext(
+      scan,
+      startFor(weeklyStartFor(scan, windowStartMs, endMs)),
+      scanEndMs,
+    );
+
     const props = houseWeeklyPropsSchema.parse(
-      await buildHouseWeekly(ctx, endMs - 7 * MS_PER_DAY, endMs),
+      await buildHouseWeekly(ctx, windowStartMs, endMs),
     );
     assertNoLogins(JSON.stringify(props, null, 2), ctx);
     console.log(
       `  ${props.weekLabel} (${props.rangeLabel}): ${props.shows} shows, ` +
-        `${props.uniques} uniques, ${props.pulled} pulled`,
+        `${props.uniques} uniques, ${props.pulled} pulled, ${props.follows} follows`,
     );
     for (const r of props.rows) {
       console.log(
-        `  ${r.artistName}: ${r.pulled} pulled, ${r.uniques} uniques, peak ${r.peak}, hold ${r.holdRate}` +
+        `  ${r.artistName}: crowd ${r.crowd} (${r.pulled}+${r.returning}), ` +
+          `${r.uniques} uniques, peak ${r.peak}, hold ${r.holdRate}, ` +
+          `${r.follows} follows` +
           (r.badges.length ? ` [${r.badges.join(", ")}]` : ""),
       );
     }

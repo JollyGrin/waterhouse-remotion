@@ -10,11 +10,14 @@
       "dateLabel": "Apr 23",
       "peak": 7,
       "uniques": 11,
+      "crowd": 3,
       "pulled": 3,
-      "cameBack": 0,
+      "returning": 0,
       "regulars": 8,
-      "holdRate": 0.36,
-      "quadrant": "hype-cliff",
+      "holdRate": 0.55,
+      "follows": 1,
+      "chat": null,
+      "quadrant": "packed-held",
       "shared": true,
       "viewers": [
         {
@@ -71,7 +74,7 @@
           "arrivedMin": 37.5,
           "leftMin": 88.5,
           "watchMin": 40.5,
-          "stayed": false
+          "stayed": true
         },
         {
           "initials": "JO",
@@ -95,7 +98,7 @@
           "arrivedMin": 89,
           "leftMin": 135.5,
           "watchMin": 46.5,
-          "stayed": false
+          "stayed": true
         },
         {
           "initials": "MO",
@@ -115,16 +118,19 @@
       "dateLabel": "Jul 9",
       "peak": 6,
       "uniques": 9,
+      "crowd": 3,
       "pulled": 3,
-      "cameBack": 4,
-      "regulars": 2,
-      "holdRate": 0.22,
+      "returning": 0,
+      "regulars": 6,
+      "holdRate": 0.33,
+      "follows": 1,
+      "chat": null,
       "quadrant": "hype-cliff",
       "shared": false,
       "viewers": [
         {
           "initials": "SI",
-          "kind": "cameBack",
+          "kind": "regular",
           "arrivedMin": 0,
           "leftMin": 199.5,
           "watchMin": 199.5,
@@ -136,11 +142,11 @@
           "arrivedMin": 2.5,
           "leftMin": 68,
           "watchMin": 65.5,
-          "stayed": false
+          "stayed": true
         },
         {
           "initials": "LM",
-          "kind": "cameBack",
+          "kind": "regular",
           "arrivedMin": 4,
           "leftMin": 198.5,
           "watchMin": 194.5,
@@ -148,7 +154,7 @@
         },
         {
           "initials": "DE",
-          "kind": "cameBack",
+          "kind": "regular",
           "arrivedMin": 4,
           "leftMin": 5.5,
           "watchMin": 1.5,
@@ -172,7 +178,7 @@
         },
         {
           "initials": "KO",
-          "kind": "cameBack",
+          "kind": "regular",
           "arrivedMin": 114.5,
           "leftMin": 152,
           "watchMin": 8,
@@ -204,16 +210,19 @@
       "dateLabel": "Aug 20",
       "peak": 6,
       "uniques": 9,
+      "crowd": 2,
       "pulled": 2,
-      "cameBack": 4,
-      "regulars": 3,
-      "holdRate": 0.11,
-      "quadrant": "hype-cliff",
+      "returning": 0,
+      "regulars": 7,
+      "holdRate": 0.44,
+      "follows": 0,
+      "chat": null,
+      "quadrant": "quiet",
       "shared": false,
       "viewers": [
         {
           "initials": "SI",
-          "kind": "cameBack",
+          "kind": "regular",
           "arrivedMin": 0,
           "leftMin": 251,
           "watchMin": 251,
@@ -225,15 +234,15 @@
           "arrivedMin": 3.5,
           "leftMin": 141.5,
           "watchMin": 49,
-          "stayed": false
+          "stayed": true
         },
         {
           "initials": "KO",
-          "kind": "cameBack",
+          "kind": "regular",
           "arrivedMin": 14,
           "leftMin": 132.5,
           "watchMin": 45.5,
-          "stayed": false
+          "stayed": true
         },
         {
           "initials": "MA",
@@ -241,7 +250,7 @@
           "arrivedMin": 20.5,
           "leftMin": 132.5,
           "watchMin": 112,
-          "stayed": false
+          "stayed": true
         },
         {
           "initials": "MU",
@@ -253,7 +262,7 @@
         },
         {
           "initials": "DE",
-          "kind": "cameBack",
+          "kind": "regular",
           "arrivedMin": 28,
           "leftMin": 35,
           "watchMin": 7,
@@ -277,7 +286,7 @@
         },
         {
           "initials": "MI",
-          "kind": "cameBack",
+          "kind": "regular",
           "arrivedMin": 231,
           "leftMin": 243.5,
           "watchMin": 12.5,
@@ -293,16 +302,19 @@
       "dateLabel": "Sep 3",
       "peak": 9,
       "uniques": 9,
+      "crowd": 3,
       "pulled": 3,
-      "cameBack": 2,
-      "regulars": 4,
-      "holdRate": 0.44,
-      "quadrant": "hype-cliff",
+      "returning": 0,
+      "regulars": 6,
+      "holdRate": 0.89,
+      "follows": 1,
+      "chat": null,
+      "quadrant": "packed-held",
       "shared": false,
       "viewers": [
         {
           "initials": "SI",
-          "kind": "cameBack",
+          "kind": "regular",
           "arrivedMin": 0,
           "leftMin": 153.5,
           "watchMin": 153.5,
@@ -330,7 +342,7 @@
           "arrivedMin": 15.5,
           "leftMin": 95,
           "watchMin": 57,
-          "stayed": false
+          "stayed": true
         },
         {
           "initials": "DE",
@@ -342,7 +354,7 @@
         },
         {
           "initials": "KO",
-          "kind": "cameBack",
+          "kind": "regular",
           "arrivedMin": 49,
           "leftMin": 68.5,
           "watchMin": 9.5,
@@ -354,7 +366,7 @@
           "arrivedMin": 65,
           "leftMin": 148,
           "watchMin": 45.5,
-          "stayed": false
+          "stayed": true
         },
         {
           "initials": "EL",
@@ -362,7 +374,7 @@
           "arrivedMin": 67,
           "leftMin": 153,
           "watchMin": 73,
-          "stayed": false
+          "stayed": true
         },
         {
           "initials": "IS",
@@ -370,12 +382,13 @@
           "arrivedMin": 79.5,
           "leftMin": 153.5,
           "watchMin": 74,
-          "stayed": false
+          "stayed": true
         }
       ]
     }
   ],
   "bestUniques": 11,
+  "bestCrowd": 3,
   "nextSlot": {
     "dayLabel": "Thu",
     "time": "7pm",
