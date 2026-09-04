@@ -36,7 +36,7 @@ import {
   dayLabel,
   computeHoldRate,
   matchSessionToArtists,
-  mainArtistWindowStart,
+  returningWindowStart,
   peakAcross,
   pulledWindowStart,
   rangeLabel,
@@ -395,9 +395,7 @@ async function loadContext(
 
 /** How far back a session must see for both lookbacks to be complete. */
 function requiredStartFor(sessionStartMs: number): number {
-  return (
-    mainArtistWindowStart(sessionStartMs) - WINDOW_MARGIN_DAYS * MS_PER_DAY
-  );
+  return returningWindowStart(sessionStartMs) - WINDOW_MARGIN_DAYS * MS_PER_DAY;
 }
 
 function matchFor(ctx: Joined, session: StreamSession): SessionMatch {
@@ -442,7 +440,7 @@ function analyse(
   const match = matchFor(ctx, session);
   const sStart = toMs(session.start);
   const lookbackStart = pulledWindowStart(sStart);
-  const mainStart = mainArtistWindowStart(sStart);
+  const mainStart = returningWindowStart(sStart);
   if (mainStart < ctx.dataStartMs && !warned.has(session.start)) {
     warned.add(session.start);
     console.warn(
@@ -742,8 +740,7 @@ async function buildHouseWeekly(
       const history = sessionsForArtist(ctx, artist.id);
       let beat: number | null = null;
       if (history.length > 0) {
-        beat = analyse(ctx, history[history.length - 1], artist).audience
-          .uniques;
+        beat = analyse(ctx, history[history.length - 1], artist).audience.crowd;
       }
       nextWeek.push({
         dayLabel: dayLabel(r.start),

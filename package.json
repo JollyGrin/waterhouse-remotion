@@ -33,6 +33,7 @@
     "render:weekly": "bun scripts/render-weekly.ts",
     "render:pullup": "bun scripts/render-pullup.ts",
     "gen:audio": "bun scripts/gen-audio.ts",
+    "gen:audio:recap": "bun scripts/gen-audio-recap.ts",
     "fetch:audience": "bun scripts/fetch-audience.ts",
     "test": "bun test",
     "fetch:kenney": "bun scripts/fetch-kenney.ts"

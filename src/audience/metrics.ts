@@ -19,10 +19,12 @@
  *   `watchMin` is the summed length of those visits.
  * - **Pulled**: no snapshot in *any* session during the 30 days before this
  *   session started.
- * - **Returning**: not pulled, and this artist is their main artist — of the
- *   distinct Waterhouse sessions they attended in the previous 90 days, at
- *   least half belong to this artist, and at least one of them does.
- * - **Regular**: everyone else.
+ * - **House regular**: attended at least a third of *everything* the house
+ *   streamed in the previous 90 days. They come for the channel, not for
+ *   anyone on it, so no artist may claim them.
+ * - **Returning**: not pulled, saw at least one earlier session of this
+ *   artist in the previous 90 days, and is not a house regular.
+ * - **Regular**: everyone else, house regulars included.
  * - **Crowd**: `pulled + returning` — the audience this artist brought, as
  *   opposed to the room that was already there. The weekly board ranks on it.
  * - **Stayed**: `watchMin >= min(30, half the session)` — half an hour, or
@@ -51,10 +53,17 @@ export const VISIT_GAP_MIN = 2;
 export const PULLED_LOOKBACK_DAYS = 30;
 
 /** Window used to work out whose regular a viewer is. */
-export const MAIN_ARTIST_LOOKBACK_DAYS = 90;
+export const RETURNING_LOOKBACK_DAYS = 90;
 
-/** Share of a viewer's recent sessions that must be this artist's. */
-export const MAIN_ARTIST_SHARE = 0.5;
+/**
+ * Attend this share of everything the house streamed in the lookback window
+ * and you are a house regular: you would have been in the room whoever was
+ * playing, so no artist gets to claim you.
+ */
+export const HOUSE_REGULAR_SHARE = 1 / 3;
+
+/** Streams shorter than this are technical blips, not shows. */
+export const MIN_SESSION_MIN = 5;
 
 /** Share of a session a reservation must cover to own it. */
 export const SESSION_OVERLAP_RATIO = 0.2;
@@ -365,9 +374,9 @@ export function pulledWindowStart(sessionStartMs: number): number {
   return sessionStartMs - PULLED_LOOKBACK_DAYS * MS_PER_DAY;
 }
 
-/** Start of the main-artist lookback window for a session. */
-export function mainArtistWindowStart(sessionStartMs: number): number {
-  return sessionStartMs - MAIN_ARTIST_LOOKBACK_DAYS * MS_PER_DAY;
+/** Start of the returning/house-regular lookback window for a session. */
+export function returningWindowStart(sessionStartMs: number): number {
+  return sessionStartMs - RETURNING_LOOKBACK_DAYS * MS_PER_DAY;
 }
 
 /**
@@ -441,8 +450,10 @@ export type ViewerKind = Viewer["kind"];
 
 /** How many recent sessions a viewer went to, and how many were this artist's. */
 export interface ViewerAttendance {
+  /** Sessions of THIS artist they saw in the window. */
   artistSessions: number;
-  totalSessions: number;
+  /** Qualifying house sessions they saw in the window, this artist included. */
+  attendedSessions: number;
 }
 
 /** A session already joined to the artists it belongs to. */
@@ -451,11 +462,25 @@ export interface AttendedSession {
   artistIds: string[];
 }
 
+/** The 90-day record everyone in a session is judged against. */
+export interface AttendanceWindow {
+  /** Qualifying house sessions in the window — the house-regular denominator. */
+  houseSessions: number;
+  viewers: Map<string, ViewerAttendance>;
+}
+
+/** Blips are not shows, and must not dilute the house-regular denominator. */
+function isRealSession(session: StreamSession): boolean {
+  return session.durationMin >= MIN_SESSION_MIN;
+}
+
 /**
- * Attendance over `[fromMs, toMsExclusive)`: for every viewer, how many
- * distinct Waterhouse sessions they watched and how many of those were
- * `artistId`'s. Sessions nobody is booked on still count towards the total —
- * they are sessions the viewer chose to watch.
+ * Attendance over `[fromMs, toMsExclusive)`: how many real house sessions
+ * there were, and for every viewer how many of them they watched — in total,
+ * and how many were `artistId`'s.
+ *
+ * Sessions nobody is booked on still count: they are streams the viewer chose
+ * to watch, and the house-regular test is about the channel, not the roster.
  */
 export function buildAttendance(
   snapshots: ChatterSnapshot[],
@@ -463,11 +488,16 @@ export function buildAttendance(
   artistId: string,
   fromMs: number,
   toMsExclusive: number,
-): Map<string, ViewerAttendance> {
-  const out = new Map<string, ViewerAttendance>();
+): AttendanceWindow {
+  const viewers = new Map<string, ViewerAttendance>();
+  let houseSessions = 0;
+
   for (const item of attended) {
     const start = toMs(item.session.start);
     if (start < fromMs || start >= toMsExclusive) continue;
+    if (!isRealSession(item.session)) continue;
+    houseSessions++;
+
     let mine = false;
     for (const id of item.artistIds) {
       if (id === artistId) mine = true;
@@ -479,48 +509,51 @@ export function buildAttendance(
       toMs(item.session.end) + 1,
     );
     for (const userId of ids) {
-      const entry = out.get(userId);
+      const entry = viewers.get(userId);
       if (entry) {
-        entry.totalSessions++;
+        entry.attendedSessions++;
         if (mine) entry.artistSessions++;
       } else {
-        out.set(userId, {
+        viewers.set(userId, {
           artistSessions: mine ? 1 : 0,
-          totalSessions: 1,
+          attendedSessions: 1,
         });
       }
     }
   }
-  return out;
+
+  return { houseSessions, viewers };
 }
 
-/** Is this artist the viewer's main artist over the lookback window? */
-export function isMainArtist(
+/**
+ * A viewer who turns up for a third of everything the house streams belongs
+ * to the channel, not to whoever happened to be on. No artist may bank them
+ * as "returning".
+ */
+export function isHouseRegular(
   attendance: ViewerAttendance | undefined,
+  houseSessions: number,
 ): boolean {
-  if (!attendance) return false;
-  if (attendance.artistSessions < 1) return false;
-  if (attendance.totalSessions < 1) return false;
-  return (
-    attendance.artistSessions / attendance.totalSessions >= MAIN_ARTIST_SHARE
-  );
+  if (!attendance || houseSessions < 1) return false;
+  return attendance.attendedSessions / houseSessions >= HOUSE_REGULAR_SHARE;
 }
 
 /**
  * `priorUserIds` are everyone seen in any session in the 30 days before this
- * one; `attendance` is this viewer's 90-day record against this artist.
+ * one; `window` is the 90-day attendance record for this artist.
  */
 export function classifyViewer(
   userId: string,
   priorUserIds: Set<string>,
-  attendance: ViewerAttendance | undefined,
+  window: AttendanceWindow,
 ): ViewerKind {
   if (!priorUserIds.has(userId)) return "pulled";
-  if (isMainArtist(attendance)) return "returning";
-  return "regular";
+  const attendance = window.viewers.get(userId);
+  if (!attendance || attendance.artistSessions < 1) return "regular";
+  if (isHouseRegular(attendance, window.houseSessions)) return "regular";
+  return "returning";
 }
 
-/** Half an hour, or half the set when the set was shorter than an hour. */
 export function stayThresholdMin(durationMin: number): number {
   return Math.min(STAY_TARGET_MIN, STAY_RATIO * durationMin);
 }
@@ -650,8 +683,8 @@ export interface SessionAudienceInput {
   exclusions: Set<string>;
   /** Everyone seen in any session in the 30 days before this one. */
   priorUserIds: Set<string>;
-  /** Each viewer's 90-day record against the artist this session is for. */
-  attendance: Map<string, ViewerAttendance>;
+  /** The 90-day attendance record for the artist this session is for. */
+  attendance: AttendanceWindow;
   /** Messages and chatters, or null when the logger has no chat data. */
   chat: ChatStats | null;
   /** Reservation start to label the slot with; falls back to session start. */
@@ -692,11 +725,7 @@ export function analyseSession(input: SessionAudienceInput): SessionAnalysis {
   const entries: SessionEntry[] = [];
 
   for (const p of presence) {
-    const kind = classifyViewer(
-      p.userId,
-      priorUserIds,
-      attendance.get(p.userId),
-    );
+    const kind = classifyViewer(p.userId, priorUserIds, attendance);
     if (kind === "pulled") pulled++;
     else if (kind === "returning") returning++;
     else regulars++;

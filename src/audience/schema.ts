@@ -132,7 +132,7 @@ export const nextWeekSlotSchema = z.object({
   dayLabel: z.string(),
   time: z.string(),
   artistName: z.string(),
-  /** The artist's most recent uniques — the number to beat. */
+  /** The artist's crowd last time out — the number to beat. */
   beat: z.number().nullable(),
 });
 

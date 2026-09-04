@@ -8,7 +8,7 @@ import {
   chatStatsFor,
   chatStatsOrNull,
   classifyViewer,
-  isMainArtist,
+  isHouseRegular,
   computeHoldRate,
   initialsFromLogin,
   isBounced,
@@ -21,8 +21,10 @@ import {
   stayThresholdMin,
   type ArtistRef,
   type BoardCandidate,
+  type AttendanceWindow,
   type ChatMessage,
   type ChatterSnapshot,
+  type ViewerAttendance,
   type ReservationRef,
   type StreamSession,
 } from "./metrics";
@@ -145,45 +147,70 @@ describe("buildPresence", () => {
 
 // --- classification -------------------------------------------------------
 
-describe("isMainArtist / classifyViewer", () => {
-  const prior = new Set(["loyal", "tourist"]);
+describe("isHouseRegular / classifyViewer", () => {
+  const prior = new Set(["fan", "everywhere", "stranger"]);
+
+  /** A 90-day window with `houseSessions` shows in it. */
+  const window = (
+    houseSessions: number,
+    viewers: Record<string, ViewerAttendance>,
+  ): AttendanceWindow => ({
+    houseSessions,
+    viewers: new Map(Object.keys(viewers).map((k) => [k, viewers[k]])),
+  });
 
   test("nobody has seen them before -> pulled", () => {
-    expect(
-      classifyViewer("fresh", prior, { artistSessions: 0, totalSessions: 0 }),
-    ).toBe("pulled");
+    expect(classifyViewer("fresh", prior, window(65, {}))).toBe("pulled");
+  });
+
+  test("a fan of this artist who is not always around -> returning", () => {
+    // 3 of this artist's shows, 7 other nights, out of 65 house sessions.
+    const w = window(65, {
+      fan: { artistSessions: 3, attendedSessions: 10 },
+    });
+    expect(isHouseRegular(w.viewers.get("fan"), w.houseSessions)).toBe(false);
+    expect(classifyViewer("fan", prior, w)).toBe("returning");
+  });
+
+  test("a house regular is regular even having seen this artist", () => {
+    // 30 of 65 nights: they would have been here whoever was playing.
+    const w = window(65, {
+      everywhere: { artistSessions: 4, attendedSessions: 30 },
+    });
+    expect(isHouseRegular(w.viewers.get("everywhere"), w.houseSessions)).toBe(
+      true,
+    );
+    expect(classifyViewer("everywhere", prior, w)).toBe("regular");
+  });
+
+  test("a third of the house is exactly the line", () => {
+    const w = window(66, {
+      onTheLine: { artistSessions: 1, attendedSessions: 22 },
+      justUnder: { artistSessions: 1, attendedSessions: 21 },
+    });
+    expect(isHouseRegular(w.viewers.get("onTheLine"), 66)).toBe(true);
+    expect(isHouseRegular(w.viewers.get("justUnder"), 66)).toBe(false);
+  });
+
+  test("never having seen this artist -> regular", () => {
+    const w = window(65, {
+      stranger: { artistSessions: 0, attendedSessions: 4 },
+    });
+    expect(classifyViewer("stranger", prior, w)).toBe("regular");
   });
 
   test("pulled wins over returning however strong the record", () => {
-    const perfect = { artistSessions: 4, totalSessions: 4 };
-    expect(classifyViewer("loyal", prior, perfect)).toBe("returning");
-    // Same viewer, same record, but unseen in the 30-day window:
-    expect(classifyViewer("loyal", new Set(), perfect)).toBe("pulled");
+    const w = window(65, { fan: { artistSessions: 3, attendedSessions: 10 } });
+    expect(classifyViewer("fan", prior, w)).toBe("returning");
+    // Same record, but unseen in the 30-day window:
+    expect(classifyViewer("fan", new Set(), w)).toBe("pulled");
   });
 
-  test("half their recent sessions were this artist's -> returning", () => {
-    expect(
-      classifyViewer("loyal", prior, { artistSessions: 2, totalSessions: 4 }),
-    ).toBe("returning");
-  });
-
-  test("under half -> regular", () => {
-    expect(
-      classifyViewer("tourist", prior, { artistSessions: 1, totalSessions: 3 }),
-    ).toBe("regular");
-  });
-
-  test("a perfect ratio still needs at least one prior session", () => {
-    expect(isMainArtist({ artistSessions: 0, totalSessions: 0 })).toBe(false);
-    expect(isMainArtist(undefined)).toBe(false);
-    expect(
-      classifyViewer("loyal", prior, { artistSessions: 0, totalSessions: 2 }),
-    ).toBe("regular");
-  });
-
-  test("sessions nobody is booked on still count against the ratio", () => {
-    expect(isMainArtist({ artistSessions: 1, totalSessions: 2 })).toBe(true);
-    expect(isMainArtist({ artistSessions: 1, totalSessions: 3 })).toBe(false);
+  test("an empty window makes nobody a house regular", () => {
+    expect(isHouseRegular({ artistSessions: 0, attendedSessions: 0 }, 0)).toBe(
+      false,
+    );
+    expect(isHouseRegular(undefined, 65)).toBe(false);
   });
 });
 
@@ -203,32 +230,43 @@ describe("buildAttendance", () => {
   ];
 
   test("counts distinct sessions, not snapshots", () => {
-    const map = buildAttendance(snapshots, attended, "ana", at(0), at(1000));
-    expect(map.get("regular")).toEqual({
+    const w = buildAttendance(snapshots, attended, "ana", at(0), at(1000));
+    expect(w.houseSessions).toBe(3);
+    expect(w.viewers.get("regular")).toEqual({
       artistSessions: 2,
-      totalSessions: 3,
+      attendedSessions: 3,
     });
-    expect(map.get("anafan")).toEqual({
+    expect(w.viewers.get("anafan")).toEqual({
       artistSessions: 1,
-      totalSessions: 1,
+      attendedSessions: 1,
     });
   });
 
   test("honours the window bounds", () => {
-    const map = buildAttendance(snapshots, attended, "ana", at(300), at(1000));
-    expect(map.get("regular")).toEqual({
+    const w = buildAttendance(snapshots, attended, "ana", at(300), at(1000));
+    expect(w.houseSessions).toBe(1);
+    expect(w.viewers.get("regular")).toEqual({
       artistSessions: 1,
-      totalSessions: 1,
+      attendedSessions: 1,
     });
   });
 
   test("a viewer who never saw this artist has a zero numerator", () => {
-    const map = buildAttendance(snapshots, attended, "bo", at(0), at(1000));
-    expect(map.get("anafan")).toEqual({
+    const w = buildAttendance(snapshots, attended, "bo", at(0), at(1000));
+    expect(w.viewers.get("anafan")).toEqual({
       artistSessions: 0,
-      totalSessions: 1,
+      attendedSessions: 1,
     });
-    expect(isMainArtist(map.get("anafan"))).toBe(false);
+  });
+
+  test("blips under 5 minutes are not shows", () => {
+    const withBlip = attended.concat([
+      { session: sessionAt(600, 2), artistIds: ["ana"] },
+    ]);
+    const blipSnaps = snapshots.concat([snap(601, [["regular", "reg"]])]);
+    const w = buildAttendance(blipSnaps, withBlip, "ana", at(0), at(1000));
+    expect(w.houseSessions).toBe(3);
+    expect(w.viewers.get("regular")!.attendedSessions).toBe(3);
   });
 });
 
@@ -628,9 +666,12 @@ describe("analyseSession", () => {
       snapshots,
       exclusions: buildExclusions([null]),
       priorUserIds: new Set(["stayer"]),
-      attendance: new Map([
-        ["stayer", { artistSessions: 3, totalSessions: 4 }],
-      ]),
+      attendance: {
+        houseSessions: 20,
+        viewers: new Map([
+          ["stayer", { artistSessions: 3, attendedSessions: 5 }],
+        ]),
+      },
       chat: { messages: 8, chatters: 1 },
       slotIso: iso(0),
       shared: false,
@@ -664,7 +705,7 @@ describe("analyseSession", () => {
       snapshots: [snap(1, [["a", "ana"]])],
       exclusions: buildExclusions([]),
       priorUserIds: new Set(),
-      attendance: new Map(),
+      attendance: { houseSessions: 0, viewers: new Map() },
       chat: null,
       shared: false,
     });

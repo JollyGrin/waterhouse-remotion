@@ -9,21 +9,36 @@
     {
       "artistName": "Tj Gee",
       "artistImage": "https://cdn.waterhousestudios.nl/artists/ee46b403-8e78-4591-bbaa-eb1cdc599491/1788526895394.jpg",
-      "crowd": 3,
+      "crowd": 4,
       "pulled": 3,
-      "returning": 0,
+      "returning": 1,
       "uniques": 9,
       "holdRate": 0.89,
       "peak": 9,
       "follows": 1,
       "chat": null,
-      "deltaCrowd": 1,
+      "deltaCrowd": 2,
       "shared": false,
       "badges": [
         "most-pulled",
         "held-the-room",
         "best-comeback"
       ]
+    },
+    {
+      "artistName": "Denzo",
+      "artistImage": "https://cdn.waterhousestudios.nl/artists/019ad5fb-59f4-72ef-b661-988ce2b7a1e4/1788277486658.png",
+      "crowd": 4,
+      "pulled": 1,
+      "returning": 3,
+      "uniques": 7,
+      "holdRate": 0.57,
+      "peak": 5,
+      "follows": 0,
+      "chat": null,
+      "deltaCrowd": -9,
+      "shared": false,
+      "badges": []
     },
     {
       "artistName": "Fien",
@@ -41,21 +56,6 @@
       "badges": [
         "most-follows"
       ]
-    },
-    {
-      "artistName": "Denzo",
-      "artistImage": "https://cdn.waterhousestudios.nl/artists/019ad5fb-59f4-72ef-b661-988ce2b7a1e4/1788277486658.png",
-      "crowd": 2,
-      "pulled": 1,
-      "returning": 1,
-      "uniques": 7,
-      "holdRate": 0.57,
-      "peak": 5,
-      "follows": 0,
-      "chat": null,
-      "deltaCrowd": -9,
-      "shared": false,
-      "badges": []
     }
   ],
   "houseSeries": [
@@ -103,7 +103,7 @@
       "dayLabel": "Fri",
       "time": "7pm",
       "artistName": "L4C4",
-      "beat": 7
+      "beat": 3
     }
   ]
 }

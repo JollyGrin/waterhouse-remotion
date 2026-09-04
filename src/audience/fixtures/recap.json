@@ -302,10 +302,10 @@
       "dateLabel": "Sep 3",
       "peak": 9,
       "uniques": 9,
-      "crowd": 3,
+      "crowd": 4,
       "pulled": 3,
-      "returning": 0,
-      "regulars": 6,
+      "returning": 1,
+      "regulars": 5,
       "holdRate": 0.89,
       "follows": 1,
       "chat": null,
@@ -378,7 +378,7 @@
         },
         {
           "initials": "IS",
-          "kind": "regular",
+          "kind": "returning",
           "arrivedMin": 79.5,
           "leftMin": 153.5,
           "watchMin": 74,
@@ -388,7 +388,7 @@
     }
   ],
   "bestUniques": 11,
-  "bestCrowd": 3,
+  "bestCrowd": 4,
   "nextSlot": {
     "dayLabel": "Thu",
     "time": "7pm",
