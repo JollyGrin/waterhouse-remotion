@@ -35,13 +35,6 @@ import {
   type PullUpArtist,
   type PullUpJob,
 } from "../src/pullup/plan";
-import {
-  PANEL_ASPECT,
-  PLAYER_ASPECT,
-  frameFace,
-  type Framing,
-} from "../src/pullup/framing";
-import { detectFace, type Detection } from "./face-detect";
 
 const API_BASE = "https://api.waterhousestudios.nl/api";
 
@@ -170,6 +163,10 @@ async function fetchReservations(token: string | null): Promise<Reservation[]> {
 // This is a cheap first pass, not a guarantee: a host can answer Bun and
 // still refuse Chromium (imgproxy.ra.co behind Cloudflare does exactly that),
 // which is why <SafeImg> in src/PullUp.tsx catches the rest at render time.
+//
+// Nothing here looks *inside* an image. How a photo hangs in the stream
+// window is decided by the composition from the shape the browser reports as
+// it loads - see src/pullup/framing.ts.
 const imageCache = new Map<string, boolean>();
 
 async function imageLoads(url: string | null): Promise<boolean> {
@@ -198,69 +195,9 @@ async function imageLoads(url: string | null): Promise<boolean> {
   return ok;
 }
 
-// Face detection is the only thing that needs the actual pixels, and it only
-// runs for the one or two photos that land in the stream window - never for
-// the roster avatars. Anything huge is skipped rather than pulled into
-// memory; it would only be a background gif anyway.
-const DETECT_MAX_BYTES = 24 * 1024 * 1024;
-
-const faceCache = new Map<string, Detection | null>();
-
-async function detectionFor(url: string): Promise<Detection | null> {
-  const cached = faceCache.get(url);
-  if (cached !== undefined) return cached;
-
-  let detection: Detection | null = null;
-  try {
-    const res = await fetch(url, {
-      method: "GET",
-      headers: { Accept: "image/*" },
-      signal: AbortSignal.timeout(30000),
-    });
-    const declared = Number(res.headers.get("content-length") ?? 0);
-    if (res.ok && declared <= DETECT_MAX_BYTES) {
-      const bytes = new Uint8Array(await res.arrayBuffer());
-      detection =
-        bytes.byteLength <= DETECT_MAX_BYTES ? await detectFace(bytes) : null;
-    } else {
-      await res.body?.cancel();
-      if (declared > DETECT_MAX_BYTES) {
-        console.log(
-          `  (${url} is ${Math.round(declared / 1e6)}MB - not detecting a face in it)`,
-        );
-      }
-    }
-  } catch {
-    detection = null;
-  }
-  faceCache.set(url, detection);
-  return detection;
-}
-
-// A photo, framed. `targetAspect` is the window it has to hang in; pass null
-// for the small round avatars, which stay a plain centred cover crop.
-async function photo(
-  url: string | null,
-  targetAspect: number | null,
-): Promise<{ image: string | null; framing?: Framing }> {
-  if (!url || !(await imageLoads(url))) return { image: null };
-  if (targetAspect === null) return { image: url };
-
-  const detection = await detectionFor(url);
-  if (!detection) return { image: url };
-
-  const framing = frameFace({
-    imageWidth: detection.imageWidth,
-    imageHeight: detection.imageHeight,
-    face: detection.face,
-    targetAspect,
-  });
-  console.log(
-    detection.face
-      ? `  (face at ${detection.face.x},${detection.face.y} ${detection.face.width}x${detection.face.height} -> ${framing.fit} ${framing.position})`
-      : `  (no face found in ${url})`,
-  );
-  return { image: url, framing };
+/** The photo to use, or null if it is not worth handing to the render. */
+async function photo(url: string | null): Promise<string | null> {
+  return (await imageLoads(url)) ? url : null;
 }
 
 // --- Build the "room" from the rest of the roster ---
@@ -384,31 +321,22 @@ async function renderClip(
 
   // Only shared bookings carry `performers`; a solo clip's props stay exactly
   // the shape they have always been.
-  // A two-artist bill splits the window down the middle, so each photo is
-  // framed against a much narrower box. Three or more become round chips,
-  // which do not need framing at all.
-  const billAspect =
-    job.kind === "shared" && job.artists.length === 2 ? PANEL_ASPECT : null;
-
   const performers =
     job.kind === "shared"
       ? await Promise.all(
           job.artists.map(async (a) => ({
             name: a.stage_name,
-            ...(await photo(a.profile_image_url, billAspect)),
+            image: await photo(a.profile_image_url),
           })),
         )
       : undefined;
 
-  const solo =
-    job.kind === "solo"
-      ? await photo(job.artist.profile_image_url, PLAYER_ASPECT)
-      : { image: null as string | null, framing: undefined };
+  const artistImage =
+    job.kind === "solo" ? await photo(job.artist.profile_image_url) : null;
 
   const props = {
     artistName: name,
-    artistImage: solo.image,
-    ...(solo.framing ? { artistFraming: solo.framing } : {}),
+    artistImage,
     genre: job.kind === "solo" ? job.artist.genre || job.artist.bio : null,
     eventDay: formatDay(event.start_time),
     eventTime: formatTime(event.start_time),

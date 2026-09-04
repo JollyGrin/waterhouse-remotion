@@ -1,10 +1,13 @@
 import React from "react";
 import { z } from "zod";
+import { flushSync } from "react-dom";
 import {
   AbsoluteFill,
   Audio,
   Img,
   Sequence,
+  continueRender,
+  delayRender,
   interpolate,
   spring,
   staticFile,
@@ -14,7 +17,7 @@ import {
 import { loadFont as loadJersey } from "@remotion/google-fonts/Jersey10";
 import { loadFont as loadGrotesk } from "@remotion/google-fonts/SpaceGrotesk";
 import { billLine, initials } from "./pullup/plan";
-import { PLAYER_FRAME, type Framing } from "./pullup/framing";
+import { DEFAULT_FIT, PLAYER_FRAME, fitFor, type Fit } from "./pullup/framing";
 
 // Same brand pairing as WeeklyLineup: Jersey 10 headlines, Space Grotesk body.
 const { fontFamily: brandFont } = loadJersey();
@@ -36,18 +39,9 @@ const ChatLineSchema = z.object({
 // A shared booking - two or more artists on one night - gets one clip led by
 // the event title, with everybody on the bill in the player frame. Absent or
 // shorter than two entries, the clip is the plain single-artist one.
-// How a photo hangs in its window. Worked out per image in the render
-// script's preflight from the detected face box - see src/pullup/framing.ts.
-// Absent means the historic `cover` / `center top`.
-const FramingSchema = z.object({
-  fit: z.enum(["cover", "contain"]),
-  position: z.string(),
-});
-
 const PerformerSchema = z.object({
   name: z.string(),
   image: z.string().nullable(),
-  framing: FramingSchema.optional(),
 });
 
 export type Performer = z.infer<typeof PerformerSchema>;
@@ -61,7 +55,6 @@ export const PullUpSchema = z.object({
   eventDate: z.string(),
   avatars: z.array(AvatarSchema),
   chatLines: z.array(ChatLineSchema),
-  artistFraming: FramingSchema.optional(),
   // Set only for a shared booking; `artistName` is then the event title.
   performers: z.array(PerformerSchema).optional(),
   seed: z.number().optional(),
@@ -221,18 +214,70 @@ const SafeImg: React.FC<{
   );
 };
 
-// A photo hung in its window the way the preflight worked out: normally a
-// `cover` crop slid onto the face, and for a headshot too tight to crop, the
-// whole photo `contain`ed over a blurred, darkened copy of itself.
+// How each photo has been measured so far, so a remount - or a second panel
+// showing the same artist - does not measure it again.
+const fitCache = new Map<string, Fit>();
+
+/**
+ * The photo's shape, from its own natural pixel dimensions.
+ *
+ * Measuring has to finish before the frame is captured, so it holds a
+ * delayRender() handle open across the probe and only releases it once React
+ * has committed the answer - hence flushSync. Without that the screenshot
+ * can land between "measured" and "re-rendered" and catch a portrait photo
+ * mid-crop.
+ *
+ * A probe that errors just gives up and leaves the default: the real <Img>
+ * below is about to fail too, and <SafeImg> handles that.
+ */
+function useNaturalFit(src: string): Fit {
+  const [fit, setFit] = React.useState<Fit>(
+    () => fitCache.get(src) ?? DEFAULT_FIT,
+  );
+
+  React.useLayoutEffect(() => {
+    const cached = fitCache.get(src);
+    if (cached) {
+      setFit(cached);
+      return;
+    }
+
+    const handle = delayRender(`Measuring the shape of ${src}`);
+    let settled = false;
+    const settle = (measured?: Fit) => {
+      if (settled) return;
+      settled = true;
+      if (measured) {
+        fitCache.set(src, measured);
+        // Commit the fit before letting the render continue.
+        flushSync(() => setFit(measured));
+      }
+      continueRender(handle);
+    };
+
+    const probe = new Image();
+    probe.onload = () =>
+      settle(fitFor(probe.naturalWidth, probe.naturalHeight));
+    probe.onerror = () => settle();
+    probe.src = src;
+
+    return () => settle();
+  }, [src]);
+
+  return fit;
+}
+
+// A photo hung in its window by the rule in src/pullup/framing.ts: a
+// portrait photo is contained over a blurred, darkened copy of itself so
+// nothing is cut, and anything landscape or square covers.
 const Photo: React.FC<{
   src: string;
-  framing: Framing | null | undefined;
   breathe: number;
   fallback: React.ReactNode;
-}> = ({ src, framing, breathe, fallback }) => {
-  const position = framing?.position ?? "center top";
+}> = ({ src, breathe, fallback }) => {
+  const fit = useNaturalFit(src);
 
-  if (framing?.fit === "contain") {
+  if (fit === "contain") {
     return (
       <>
         {/* The backdrop does the breathing, so the photo itself never moves
@@ -258,7 +303,7 @@ const Photo: React.FC<{
             width: "100%",
             height: "100%",
             objectFit: "contain",
-            objectPosition: position,
+            objectPosition: "center",
           }}
         />
       </>
@@ -273,7 +318,7 @@ const Photo: React.FC<{
         width: "100%",
         height: "100%",
         objectFit: "cover",
-        objectPosition: position,
+        objectPosition: "center",
         transform: `scale(${breathe})`,
       }}
     />
@@ -390,12 +435,7 @@ const PerformerPanel: React.FC<{ performer: Performer; breathe: number }> = ({
       }}
     >
       {performer.image ? (
-        <Photo
-          src={performer.image}
-          framing={performer.framing}
-          breathe={breathe}
-          fallback={fallback}
-        />
+        <Photo src={performer.image} breathe={breathe} fallback={fallback} />
       ) : (
         fallback
       )}
@@ -592,10 +632,9 @@ const PerformerChips: React.FC<{
 const PlayerFrame: React.FC<{
   artistName: string;
   artistImage: string | null;
-  artistFraming: Framing | undefined;
   performers: Performer[] | null;
   viewers: number;
-}> = ({ artistName, artistImage, artistFraming, performers, viewers }) => {
+}> = ({ artistName, artistImage, performers, viewers }) => {
   const frame = useCurrentFrame();
 
   // Periodic over the full 300 frames, so the seam is continuous.
@@ -639,12 +678,7 @@ const PlayerFrame: React.FC<{
     body = (
       <>
         {artistImage ? (
-          <Photo
-            src={artistImage}
-            framing={artistFraming}
-            breathe={breathe}
-            fallback={soloFallback}
-          />
+          <Photo src={artistImage} breathe={breathe} fallback={soloFallback} />
         ) : (
           soloFallback
         )}
@@ -993,7 +1027,6 @@ export const PullUp: React.FC<PullUpProps> = ({
   avatars,
   chatLines,
   performers,
-  artistFraming,
   seed = 0,
   // B (pre-show venue) is the shipped bed; A, C and the synthesised "base"
   // stay selectable through this prop.
@@ -1096,7 +1129,6 @@ export const PullUp: React.FC<PullUpProps> = ({
       <PlayerFrame
         artistName={artistName}
         artistImage={artistImage}
-        artistFraming={artistFraming}
         performers={bill}
         viewers={viewers}
       />

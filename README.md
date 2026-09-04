@@ -76,25 +76,28 @@ the same on every re-render. The room avatars do **not**: they are picked
 from the roster minus whoever is on the bill, so they shift when the bill
 changes or the roster grows.
 
-**Photos.** The preflight fetches each photo, detects the primary face and
-works out how to hang it in the window (`src/pullup/framing.ts`): normally a
-crop slid onto the face with headroom, and for a headshot too tight to crop
-at all, the whole photo over a blurred, darkened copy of itself. A photo with
-no face, or with the detector unavailable, keeps the plain top-anchored crop.
-One that will not load falls back to the artist's initials - including hosts
-that answer the preflight and then block Remotion's Chromium. That case is
-printed loudly at the end of the run, listing which clips went out with
-initials where a face should be; do not forward those before fixing the
+**Photos.** How a photo hangs in the stream window follows one rule, from
+the shape of the photo itself (`src/pullup/framing.ts`):
+
+- **Portrait** (taller than it is wide) - shown whole and centred, over a
+  blurred, darkened copy of itself. A tight headshot cropped to the
+  landscape window loses the mouth, or the eyes, or both, so it is never
+  cropped.
+- **Landscape or square** - filled and centred, losing only the edges of a
+  photo that already suits the window.
+
+The same rule applies to each half of a two-artist bill. The round chips of
+a three-plus bill and the room avatars stay filled and centred: they are
+small circles, and the shape does not matter there.
+
+The composition measures each photo as the browser loads it, holding the
+frame open until it knows - no image decoding, no preflight, no extra
+dependency. The render script only checks that a URL answers with an image
+at all; anything that does not, or that loads for the preflight and is then
+refused by Remotion's Chromium, falls back to the artist's initials. That
+case is printed loudly at the end of the run, listing which clips went out
+with initials where a face should be; do not forward those before fixing the
 artist's profile image.
-
-Face detection rides on `sharp`, `@vladmandic/human` and
-`@tensorflow/tfjs-node`, which are **optional dependencies**: they are large,
-and tfjs-node has no prebuilt binary for every platform. Rendering works
-without them, just without face-aware framing. Check one photo by hand with:
-
-```
-bun scripts/face-detect.ts <image-url>
-```
 
 ### Just the numbers
 
@@ -141,8 +144,7 @@ src/ArtistRecap.tsx         the recap composition (5 beats, 600 frames)
 src/HouseWeekly.tsx         the weekly board (5 beats, 750 frames)
 src/PullUp.tsx              per-event loop
 src/pullup/plan.ts          reservations -> render jobs (solo vs shared)
-src/pullup/framing.ts       face box -> how the photo hangs in the window
-scripts/face-detect.ts      the optional face detector behind that
+src/pullup/framing.ts       the portrait/landscape rule for the stream window
 src/WeeklyLineup.tsx        lineup story
 src/audience/schema.ts      zod props schemas: the contract between data and video
 src/audience/metrics.ts     every definition above, with tests (bun test)

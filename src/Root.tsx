@@ -72,18 +72,10 @@ const defaultPullUpChat = [
 ];
 
 // A shared booking: one clip for the night, both artists on the bill. Real
-// props from `bun run render:pullup`, framing included.
+// props from `bun run render:pullup`.
 const sharedPullUpPerformers = [
-  {
-    name: "Elemzene",
-    image: "https://i.imgur.com/awQ1ZOR.png",
-    framing: { fit: "cover" as const, position: "0% 50%" },
-  },
-  {
-    name: "L4C4",
-    image: "https://i.imgur.com/W9s7uwJ.jpeg",
-    framing: { fit: "cover" as const, position: "100% 50%" },
-  },
+  { name: "Elemzene", image: "https://i.imgur.com/awQ1ZOR.png" },
+  { name: "L4C4", image: "https://i.imgur.com/W9s7uwJ.jpeg" },
 ];
 
 const sharedPullUpChat = [
