@@ -10,21 +10,48 @@
       "artistImage": null,
       "pulled": 1,
       "uniques": 4,
+      "peak": 3,
       "holdRate": 0.5,
       "deltaUniques": null,
       "shared": false,
-      "badges": ["most-pulled"]
+      "badges": [
+        "most-pulled"
+      ]
     }
   ],
   "houseSeries": [
-    { "weekLabel": "W30", "pulled": 3 },
-    { "weekLabel": "W31", "pulled": 3 },
-    { "weekLabel": "W32", "pulled": 4 },
-    { "weekLabel": "W33", "pulled": 4 },
-    { "weekLabel": "W34", "pulled": 6 },
-    { "weekLabel": "W35", "pulled": 7 },
-    { "weekLabel": "W36", "pulled": 9 },
-    { "weekLabel": "W37", "pulled": 1 }
+    {
+      "weekLabel": "W30",
+      "pulled": 3
+    },
+    {
+      "weekLabel": "W31",
+      "pulled": 3
+    },
+    {
+      "weekLabel": "W32",
+      "pulled": 4
+    },
+    {
+      "weekLabel": "W33",
+      "pulled": 4
+    },
+    {
+      "weekLabel": "W34",
+      "pulled": 6
+    },
+    {
+      "weekLabel": "W35",
+      "pulled": 7
+    },
+    {
+      "weekLabel": "W36",
+      "pulled": 9
+    },
+    {
+      "weekLabel": "W37",
+      "pulled": 1
+    }
   ],
   "nextWeek": []
 }

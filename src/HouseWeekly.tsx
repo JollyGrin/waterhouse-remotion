@@ -64,6 +64,7 @@ const NEXT_LENGTH = 150; // 600-750 next week
 // Eight rows at one per 30 frames fills the board beat exactly. Past eight,
 // the whole board still has to land inside the same window, so the stagger
 // tightens instead of the board losing anyone.
+//
 // The legend under the header has to be settled before anything moves under
 // it, so the rows wait out its fade before the first one arrives.
 const BOARD_LEAD_IN = 14;
@@ -299,7 +300,7 @@ const BoardRowLine: React.FC<{
         height: rowHeight,
         display: "flex",
         alignItems: "center",
-        gap: 20,
+        gap: 18,
         borderBottom: `1px solid ${LINE}`,
         opacity: enter,
         transform: `translateX(${interpolate(enter, [0, 1], [70, 0])}px)`,
@@ -307,7 +308,7 @@ const BoardRowLine: React.FC<{
     >
       <div
         style={{
-          width: 54,
+          width: 48,
           flexShrink: 0,
           fontFamily: monoFont,
           fontSize: Math.min(30, rowHeight * 0.28),
@@ -348,9 +349,24 @@ const BoardRowLine: React.FC<{
         {row.pulled}
       </div>
 
+      {/* Peak is context, not a score - we rank on pulled on purpose, so this
+          stays a quiet grey number rather than competing with the accent. */}
       <div
         style={{
-          width: 240,
+          width: 90,
+          flexShrink: 0,
+          textAlign: "right",
+          fontFamily: monoFont,
+          fontSize: Math.min(28, rowHeight * 0.26),
+          color: GREY,
+        }}
+      >
+        {row.peak}
+      </div>
+
+      <div
+        style={{
+          width: 150,
           flexShrink: 0,
           height: Math.min(14, rowHeight * 0.13),
           background: PANEL,
@@ -367,7 +383,7 @@ const BoardRowLine: React.FC<{
 
       <div
         style={{
-          width: 84,
+          width: 72,
           flexShrink: 0,
           textAlign: "right",
           fontFamily: monoFont,
@@ -425,6 +441,10 @@ const TheBoard: React.FC<Pick<HouseWeeklyProps, "rows">> = ({ rows }) => {
           of your viewers who stayed for a real stretch of the set, not just a
           drop-in.
         </div>
+        <div>
+          <span style={{ color: INK }}>PEAK</span> — most people watching at
+          once.
+        </div>
       </div>
 
       <div
@@ -438,7 +458,7 @@ const TheBoard: React.FC<Pick<HouseWeeklyProps, "rows">> = ({ rows }) => {
         <div
           style={{
             display: "flex",
-            gap: 20,
+            gap: 18,
             paddingBottom: 14,
             borderBottom: `2px solid ${INK}`,
             fontFamily: monoFont,
@@ -452,13 +472,16 @@ const TheBoard: React.FC<Pick<HouseWeeklyProps, "rows">> = ({ rows }) => {
             }),
           }}
         >
-          <span style={{ width: 54, flexShrink: 0 }}>#</span>
+          <span style={{ width: 48, flexShrink: 0 }}>#</span>
           <span style={{ flex: 1 }}>Artist</span>
           <span style={{ width: 110, flexShrink: 0, textAlign: "right" }}>
             Pulled
           </span>
+          <span style={{ width: 90, flexShrink: 0, textAlign: "right" }}>
+            Peak
+          </span>
           <span
-            style={{ width: 240 + 20 + 84, flexShrink: 0, textAlign: "right" }}
+            style={{ width: 150 + 18 + 72, flexShrink: 0, textAlign: "right" }}
           >
             Hold
           </span>
