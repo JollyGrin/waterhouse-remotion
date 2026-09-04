@@ -42,5 +42,10 @@
   },
   "sideEffects": [
     "*.css"
-  ]
+  ],
+  "optionalDependencies": {
+    "@tensorflow/tfjs-node": "^4.22.0",
+    "@vladmandic/human": "^3.3.6",
+    "sharp": "^0.35.4"
+  }
 }

@@ -1,7 +1,11 @@
 #!/usr/bin/env bun
 /**
- * Render one looping "PullUp" clip per artist per event, from the Waterhouse
- * Studios calendar API. Artists forward these to friends before their show.
+ * Render one looping "PullUp" clip per event from the Waterhouse Studios
+ * calendar API. Artists forward these to friends before their show.
+ *
+ * A solo booking gets a clip named after the artist. A shared booking - two
+ * or more artists on the same reservation - gets ONE clip named after the
+ * event, with everybody on the bill in the player frame.
  *
  * Usage:
  *   bun scripts/render-pullup.ts          # interactive picker (next 5 events)
@@ -12,25 +16,37 @@
  * Enter for the public endpoint without auth. `--all` never prompts: it uses
  * $WATERHOUSE_TOKEN if set, otherwise no auth.
  *
- * Output: out/PullUp-{artist-slug}-{YYYY-MM-DD}.mp4
+ * Output: out/PullUp-{artist-or-event-slug}-{YYYY-MM-DD}.mp4
  */
 
 import { execSync } from "child_process";
 import { writeFileSync } from "fs";
 import { PULLUP_DURATION } from "../src/PullUp";
+import {
+  hashSeed,
+  initials,
+  jobFeaturedIds,
+  jobName,
+  jobSeedSource,
+  jobSlug,
+  makeRng,
+  pickDistinct,
+  planJobs,
+  type PullUpArtist,
+  type PullUpJob,
+} from "../src/pullup/plan";
+import {
+  PANEL_ASPECT,
+  PLAYER_ASPECT,
+  frameFace,
+  type Framing,
+} from "../src/pullup/framing";
+import { detectFace, type Detection } from "./face-detect";
 
 const API_BASE = "https://api.waterhousestudios.nl/api";
 
 // --- Types matching the API response ---
-interface Artist {
-  id: string;
-  stage_name: string;
-  bio: string | null;
-  genre: string | null;
-  website: string | null;
-  social_media: string | null;
-  profile_image_url: string | null;
-}
+type Artist = PullUpArtist;
 
 interface Reservation {
   id: string;
@@ -74,37 +90,6 @@ const CHAT_NAMES = [
   "dani",
   "flo",
 ];
-
-// --- Deterministic seeded RNG (mulberry32) ---
-function makeRng(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function pickDistinct<T>(pool: T[], count: number, rng: () => number): T[] {
-  const remaining = pool.slice();
-  const out: T[] = [];
-  while (out.length < count && remaining.length > 0) {
-    const i = Math.floor(rng() * remaining.length);
-    out.push(remaining.splice(i, 1)[0]);
-  }
-  return out;
-}
-
-function hashSeed(input: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < input.length; i++) {
-    h ^= input.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
 
 // --- Token extraction (same behaviour as render-weekly.ts) ---
 function extractBearerToken(input: string): string | null {
@@ -153,28 +138,6 @@ function isoDay(dateStr: string): string {
   return `${d.getFullYear()}-${m.length < 2 ? `0${m}` : m}-${day.length < 2 ? `0${day}` : day}`;
 }
 
-function slugify(name: string): string {
-  return (
-    name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "artist"
-  );
-}
-
-function initials(name: string): string {
-  // Strip punctuation first - stage names like "(N)ARZ" would otherwise
-  // yield "(N" as their avatar label.
-  const parts = name
-    .replace(/[^A-Za-z0-9\s]/g, "")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  if (parts.length === 0) return "??";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[1][0]).toUpperCase();
-}
-
 // --- API fetch ---
 async function fetchReservations(token: string | null): Promise<Reservation[]> {
   const headers: Record<string, string> = { Accept: "application/json" };
@@ -190,42 +153,85 @@ async function fetchReservations(token: string | null): Promise<Reservation[]> {
   return data.reservations;
 }
 
-// Roster rows carry stale profile URLs (dead SoundCloud CDN links, 404s).
-// Remotion's <Img> retries a failing image on every frame, so weed them out
-// once up front and let the composition fall back to initials.
-const imageCache = new Map<string, boolean>();
+// Roster rows carry stale profile URLs (dead SoundCloud CDN links, 404s), so
+// weed them out once up front and let the composition fall back to initials.
+// This is a cheap first pass, not a guarantee: a host can answer Bun and
+// still refuse Chromium (imgproxy.ra.co behind Cloudflare does exactly that),
+// which is why <SafeImg> in src/PullUp.tsx catches the rest at render time.
+const imageCache = new Map<string, Uint8Array | null>();
 
-async function imageLoads(url: string | null): Promise<boolean> {
-  if (!url) return false;
+async function imageBytes(url: string | null): Promise<Uint8Array | null> {
+  if (!url) return null;
   const cached = imageCache.get(url);
   if (cached !== undefined) return cached;
 
-  let ok = false;
+  let bytes: Uint8Array | null = null;
   try {
     const res = await fetch(url, {
       method: "GET",
       headers: { Accept: "image/*" },
       signal: AbortSignal.timeout(8000),
     });
-    ok =
-      res.ok && (res.headers.get("content-type") || "").indexOf("image") === 0;
+    if (
+      res.ok &&
+      (res.headers.get("content-type") || "").indexOf("image") === 0
+    ) {
+      bytes = new Uint8Array(await res.arrayBuffer());
+    }
   } catch {
-    ok = false;
+    bytes = null;
   }
-  if (!ok) {
+  if (!bytes) {
     console.log(`  (skipping unreachable image ${url})`);
   }
-  imageCache.set(url, ok);
-  return ok;
+  imageCache.set(url, bytes);
+  return bytes;
+}
+
+async function imageLoads(url: string | null): Promise<boolean> {
+  return (await imageBytes(url)) !== null;
+}
+
+// A photo, framed. `targetAspect` is the window it has to hang in; pass null
+// for the small round avatars, which stay a plain centred cover crop.
+const faceCache = new Map<string, Detection | null>();
+
+async function photo(
+  url: string | null,
+  targetAspect: number | null,
+): Promise<{ image: string | null; framing?: Framing }> {
+  const bytes = await imageBytes(url);
+  if (!bytes || !url) return { image: null };
+  if (targetAspect === null) return { image: url };
+
+  if (!faceCache.has(url)) {
+    faceCache.set(url, await detectFace(bytes));
+  }
+  const detection = faceCache.get(url) ?? null;
+  if (!detection) return { image: url };
+
+  const framing = frameFace({
+    imageWidth: detection.imageWidth,
+    imageHeight: detection.imageHeight,
+    face: detection.face,
+    targetAspect,
+  });
+  console.log(
+    detection.face
+      ? `  (face at ${detection.face.x},${detection.face.y} ${detection.face.width}x${detection.face.height} -> ${framing.fit} ${framing.position})`
+      : `  (no face found in ${url})`,
+  );
+  return { image: url, framing };
 }
 
 // --- Build the "room" from the rest of the roster ---
 async function buildAvatars(
   roster: Artist[],
-  featuredId: string,
+  featuredIds: string[],
   rng: () => number,
 ): Promise<Array<{ label: string; image: string | null }>> {
-  const others = roster.filter((a) => a.id !== featuredId);
+  const featured = new Set(featuredIds);
+  const others = roster.filter((a) => !featured.has(a.id));
   const chosen = pickDistinct(others, 6, rng);
 
   const avatars: Array<{ label: string; image: string | null }> = [];
@@ -255,44 +261,68 @@ async function buildAvatars(
 // the composition styles the "you" line with the accent colour to match the
 // leading YOU avatar. The other two are seeded picks from the pool.
 function buildChatLines(
-  artistName: string,
+  headliner: string,
   rng: () => number,
 ): Array<{ name: string; text: string }> {
   const names = pickDistinct(CHAT_NAMES, 2, rng);
   const texts = pickDistinct(CHAT_POOL, 2, rng);
   return [
-    { name: "you", text: `let's go ${artistName}!` },
+    { name: "you", text: `let's go ${headliner}!` },
     { name: names[0], text: texts[0] },
     { name: names[1], text: texts[1] },
   ];
 }
 
 // --- Render one clip ---
-async function renderClip(
-  event: Reservation,
-  artist: Artist,
-  roster: Artist[],
-): Promise<string> {
-  const seedSource = `${event.id}:${artist.id}`;
-  const seed = hashSeed(seedSource);
+async function renderClip(job: PullUpJob, roster: Artist[]): Promise<string> {
+  const event = job.event;
+  const seed = hashSeed(jobSeedSource(job));
   const rng = makeRng(seed);
 
+  // The headline name: the artist, or the night they share. The chat's "you"
+  // line follows it, so a shared clip reads "let's go Beatshopping!".
+  const name = jobName(job);
+
+  // Only shared bookings carry `performers`; a solo clip's props stay exactly
+  // the shape they have always been.
+  // A two-artist bill splits the window down the middle, so each photo is
+  // framed against a much narrower box. Three or more become round chips,
+  // which do not need framing at all.
+  const billAspect =
+    job.kind === "shared" && job.artists.length === 2 ? PANEL_ASPECT : null;
+
+  const performers =
+    job.kind === "shared"
+      ? await Promise.all(
+          job.artists.map(async (a) => ({
+            name: a.stage_name,
+            ...(await photo(a.profile_image_url, billAspect)),
+          })),
+        )
+      : undefined;
+
+  const solo =
+    job.kind === "solo"
+      ? await photo(job.artist.profile_image_url, PLAYER_ASPECT)
+      : { image: null as string | null, framing: undefined };
+
   const props = {
-    artistName: artist.stage_name,
-    artistImage: (await imageLoads(artist.profile_image_url))
-      ? artist.profile_image_url
-      : null,
-    genre: artist.genre || artist.bio,
+    artistName: name,
+    artistImage: solo.image,
+    ...(solo.framing ? { artistFraming: solo.framing } : {}),
+    genre: job.kind === "solo" ? job.artist.genre || job.artist.bio : null,
     eventDay: formatDay(event.start_time),
     eventTime: formatTime(event.start_time),
     eventDate: formatDate(event.start_time),
-    avatars: await buildAvatars(roster, artist.id, rng),
-    chatLines: buildChatLines(artist.stage_name, rng),
+    avatars: await buildAvatars(roster, jobFeaturedIds(job), rng),
+    chatLines: buildChatLines(name, rng),
+    ...(performers ? { performers } : {}),
     seed: seed % 4,
   };
 
-  const outPath = `out/PullUp-${slugify(artist.stage_name)}-${isoDay(event.start_time)}.mp4`;
-  const propsPath = `/tmp/waterhouse-pullup-${slugify(artist.stage_name)}-${isoDay(event.start_time)}.json`;
+  const stem = `${jobSlug(job)}-${isoDay(event.start_time)}`;
+  const outPath = `out/PullUp-${stem}.mp4`;
+  const propsPath = `/tmp/waterhouse-pullup-${stem}.json`;
   writeFileSync(propsPath, JSON.stringify(props, null, 2));
 
   const cmd = [
@@ -311,22 +341,6 @@ async function renderClip(
     cwd: process.cwd(),
   });
   return outPath;
-}
-
-// A reservation with no linked artists still gets a clip, using the purpose
-// line as the name — same fallback WeeklyLineup uses.
-function syntheticArtist(event: Reservation): Artist {
-  const name =
-    event.purpose?.replace(/^(Radio|Reserved|Private):\s*/i, "") || "Event";
-  return {
-    id: `synthetic-${event.id}`,
-    stage_name: name,
-    bio: null,
-    genre: null,
-    website: null,
-    social_media: null,
-    profile_image_url: null,
-  };
 }
 
 // --- Main ---
@@ -442,28 +456,25 @@ async function main() {
     }
   }
 
-  // One clip per artist per event.
-  const jobs: Array<{ event: Reservation; artist: Artist }> = [];
-  for (const event of chosen) {
-    const artists =
-      event.artists.length > 0 ? event.artists : [syntheticArtist(event)];
-    for (const artist of artists) {
-      jobs.push({ event, artist });
-    }
-  }
+  // One clip per artist, except a shared booking, which is one per event.
+  const jobs = planJobs(chosen);
 
   console.log(
     `\nRendering ${jobs.length} clip(s), ${PULLUP_DURATION} frames each (${(PULLUP_DURATION / 30).toFixed(1)}s):`,
   );
   for (const j of jobs) {
+    const bill =
+      j.kind === "shared"
+        ? ` (${j.artists.map((a) => a.stage_name).join(" + ")})`
+        : "";
     console.log(
-      `  ${formatDate(j.event.start_time)} ${formatTime(j.event.start_time)} - ${j.artist.stage_name}`,
+      `  ${formatDate(j.event.start_time)} ${formatTime(j.event.start_time)} - ${jobName(j)}${bill}`,
     );
   }
 
   const written: string[] = [];
   for (const j of jobs) {
-    written.push(await renderClip(j.event, j.artist, roster));
+    written.push(await renderClip(j, roster));
   }
 
   console.log(`\nDone! ${written.length} file(s):`);

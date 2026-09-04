@@ -13,6 +13,8 @@ import {
 } from "remotion";
 import { loadFont as loadJersey } from "@remotion/google-fonts/Jersey10";
 import { loadFont as loadGrotesk } from "@remotion/google-fonts/SpaceGrotesk";
+import { initials } from "./pullup/plan";
+import { PLAYER_FRAME, type Framing } from "./pullup/framing";
 
 // Same brand pairing as WeeklyLineup: Jersey 10 headlines, Space Grotesk body.
 const { fontFamily: brandFont } = loadJersey();
@@ -31,6 +33,25 @@ const ChatLineSchema = z.object({
   text: z.string(),
 });
 
+// A shared booking - two or more artists on one night - gets one clip led by
+// the event title, with everybody on the bill in the player frame. Absent or
+// shorter than two entries, the clip is the plain single-artist one.
+// How a photo hangs in its window. Worked out per image in the render
+// script's preflight from the detected face box - see src/pullup/framing.ts.
+// Absent means the historic `cover` / `center top`.
+const FramingSchema = z.object({
+  fit: z.enum(["cover", "contain"]),
+  position: z.string(),
+});
+
+const PerformerSchema = z.object({
+  name: z.string(),
+  image: z.string().nullable(),
+  framing: FramingSchema.optional(),
+});
+
+export type Performer = z.infer<typeof PerformerSchema>;
+
 export const PullUpSchema = z.object({
   artistName: z.string(),
   artistImage: z.string().nullable(),
@@ -40,6 +61,9 @@ export const PullUpSchema = z.object({
   eventDate: z.string(),
   avatars: z.array(AvatarSchema),
   chatLines: z.array(ChatLineSchema),
+  artistFraming: FramingSchema.optional(),
+  // Set only for a shared booking; `artistName` is then the event title.
+  performers: z.array(PerformerSchema).optional(),
   seed: z.number().optional(),
   // Audio only - selects which bed texture plays, default "b". No visual
   // effect whatsoever.
@@ -101,6 +125,13 @@ function fitBrandSize(text: string, maxWidth: number, cap: number): number {
   return Math.min(cap, maxWidth / (text.length * 0.4));
 }
 
+// Space Grotesk bold runs about 0.6em wide, plus the caption's 5px tracking.
+// Three names on one bill would otherwise run past the 940px column.
+function fitCaptionSize(text: string, maxWidth: number, cap: number): number {
+  if (text.length === 0) return cap;
+  return Math.min(cap, (maxWidth / text.length - 5) / 0.6);
+}
+
 // An impact: at rest, hit, overshoot, settle back to rest. Zero deviation at
 // both ends, so it is safe to run across the loop seam.
 function punch(frame: number, start: number, end: number, amount: number) {
@@ -112,6 +143,109 @@ function punch(frame: number, start: number, end: number, amount: number) {
     { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
   );
 }
+
+// --- Photos that are allowed to fail ---
+//
+// Roster photos point wherever an artist last uploaded one, and some hosts
+// answer a plain fetch while blocking the request Chromium makes during a
+// render (imgproxy.ra.co behind Cloudflare is the one that bit us). A bare
+// <Img> calls that fatal and kills the whole render, so every remote photo
+// goes through here instead: the initials fallback is painted underneath,
+// and the first load error drops the <img> for good. Unmounting it also
+// releases the delayRender() handle the image was holding, so the frame
+// continues rather than timing out.
+//
+// Failures are remembered per src for the life of the page, so a remount
+// does not walk the retry ladder again.
+const failedSrcs = new Set<string>();
+
+const SafeImg: React.FC<{
+  src: string;
+  style: React.CSSProperties;
+  fallback: React.ReactNode;
+}> = ({ src, style, fallback }) => {
+  const [failed, setFailed] = React.useState(() => failedSrcs.has(src));
+
+  const onError = React.useCallback(() => {
+    failedSrcs.add(src);
+    setFailed(true);
+  }, [src]);
+
+  return (
+    <>
+      {fallback}
+      {failed ? null : (
+        <Img
+          src={src}
+          // Report the first error instead of retrying twice with backoff:
+          // a host that blocks Chromium will not answer the retries either,
+          // and each one holds the frame open for seconds.
+          maxRetries={0}
+          onError={onError}
+          style={{ position: "absolute", inset: 0, ...style }}
+        />
+      )}
+    </>
+  );
+};
+
+// A photo hung in its window the way the preflight worked out: normally a
+// `cover` crop slid onto the face, and for a headshot too tight to crop, the
+// whole photo `contain`ed over a blurred, darkened copy of itself.
+const Photo: React.FC<{
+  src: string;
+  framing: Framing | null | undefined;
+  breathe: number;
+  fallback: React.ReactNode;
+}> = ({ src, framing, breathe, fallback }) => {
+  const position = framing?.position ?? "center top";
+
+  if (framing?.fit === "contain") {
+    return (
+      <>
+        {fallback}
+        {/* The backdrop does the breathing, so the photo itself never moves
+            and nothing can drift out of frame. */}
+        <SafeImg
+          src={src}
+          fallback={null}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            objectPosition: "center",
+            filter: "blur(30px) brightness(0.4) saturate(0.85)",
+            transform: `scale(${1.2 * breathe})`,
+          }}
+        />
+        <SafeImg
+          src={src}
+          fallback={null}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "contain",
+            objectPosition: position,
+          }}
+        />
+      </>
+    );
+  }
+
+  return (
+    <SafeImg
+      src={src}
+      fallback={fallback}
+      style={{
+        width: "100%",
+        height: "100%",
+        objectFit: "cover",
+        objectPosition: position,
+        transform: `scale(${breathe})`,
+      }}
+    />
+  );
+};
 
 // --- Twitch-style viewer counter ---
 const ViewerCounter: React.FC<{ count: number }> = ({ count }) => {
@@ -152,11 +286,217 @@ const ViewerCounter: React.FC<{ count: number }> = ({ count }) => {
 };
 
 // --- Player frame ---
+
+// The big washed-out letter behind a missing or unreachable photo.
+const PhotoFallback: React.FC<{
+  label: string;
+  size: number;
+  scale: number;
+}> = ({ label, size, scale }) => (
+  <div
+    style={{
+      position: "absolute",
+      inset: 0,
+      background: "#111111",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+    }}
+  >
+    <div
+      style={{
+        fontFamily: brandFont,
+        fontSize: size,
+        lineHeight: 1,
+        color: "#222222",
+        transform: `scale(${scale})`,
+      }}
+    >
+      {label}
+    </div>
+  </div>
+);
+
+// Bottom-up fade, so a name reads over any photo.
+const Vignette: React.FC = () => (
+  <div
+    style={{
+      position: "absolute",
+      bottom: 0,
+      left: 0,
+      width: "100%",
+      height: "35%",
+      background:
+        "linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%)",
+    }}
+  />
+);
+
+// One half of a two-artist bill: their photo, their name across the bottom.
+const PerformerPanel: React.FC<{ performer: Performer; breathe: number }> = ({
+  performer,
+  breathe,
+}) => {
+  const name = performer.name.toUpperCase();
+  const fallback = (
+    <PhotoFallback
+      label={initials(performer.name)}
+      size={220}
+      scale={breathe}
+    />
+  );
+
+  return (
+    <div
+      style={{
+        position: "relative",
+        flex: 1,
+        height: "100%",
+        overflow: "hidden",
+        background: "#0b0b0b",
+      }}
+    >
+      {performer.image ? (
+        <Photo
+          src={performer.image}
+          framing={performer.framing}
+          breathe={breathe}
+          fallback={fallback}
+        />
+      ) : (
+        fallback
+      )}
+      <Vignette />
+      <div
+        style={{
+          position: "absolute",
+          bottom: 18,
+          left: 12,
+          right: 12,
+          textAlign: "center",
+          fontFamily: brandFont,
+          fontSize: fitBrandSize(name, 380, 76),
+          lineHeight: 1,
+          color: "#ffffff",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {name}
+      </div>
+    </div>
+  );
+};
+
+// Three or more names do not fit as panels, so the bill becomes a row of
+// chips: the photo where it loads, initials where it does not.
+const PerformerChips: React.FC<{
+  performers: Performer[];
+  breathe: number;
+}> = ({ performers, breathe }) => {
+  // Fit the whole row inside the window: past three names, the chips shrink
+  // rather than running off both ends.
+  const gap = 24;
+  const column = Math.floor(
+    (PLAYER_FRAME.width - 64 - gap * (performers.length - 1)) /
+      performers.length,
+  );
+  const size = Math.min(200, column);
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        background: "#0b0b0b",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap,
+        padding: "0 32px",
+      }}
+    >
+      {performers.map((p, i) => {
+        const color = AVATAR_COLORS[i % AVATAR_COLORS.length];
+        const name = p.name.toUpperCase();
+        const chipInitials = (
+          <span
+            style={{
+              fontFamily: brandFont,
+              fontSize: size * 0.42,
+              lineHeight: 1,
+              color: "#ffffff",
+            }}
+          >
+            {initials(p.name)}
+          </span>
+        );
+        return (
+          <div
+            key={`${p.name}-${i}`}
+            style={{
+              width: column,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 18,
+            }}
+          >
+            <div
+              style={{
+                position: "relative",
+                width: size,
+                height: size,
+                borderRadius: "50%",
+                overflow: "hidden",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "#141414",
+                border: `3px solid ${color}`,
+                transform: `scale(${breathe})`,
+                flexShrink: 0,
+              }}
+            >
+              {p.image ? (
+                <SafeImg
+                  src={p.image}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                  }}
+                  fallback={chipInitials}
+                />
+              ) : (
+                chipInitials
+              )}
+            </div>
+            <div
+              style={{
+                fontFamily: brandFont,
+                fontSize: fitBrandSize(name, column, 46),
+                lineHeight: 1,
+                color: "#ffffff",
+                textAlign: "center",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {name}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 const PlayerFrame: React.FC<{
   artistName: string;
   artistImage: string | null;
+  artistFraming: Framing | undefined;
+  performers: Performer[] | null;
   viewers: number;
-}> = ({ artistName, artistImage, viewers }) => {
+}> = ({ artistName, artistImage, artistFraming, performers, viewers }) => {
   const frame = useCurrentFrame();
 
   // Periodic over the full 300 frames, so the seam is continuous.
@@ -164,68 +504,73 @@ const PlayerFrame: React.FC<{
     1.02 + 0.02 * Math.sin((2 * Math.PI * frame) / PULLUP_DURATION);
   const liveDot = 0.55 + 0.45 * Math.sin((2 * Math.PI * frame) / 60);
 
+  const soloFallback = (
+    <PhotoFallback
+      label={artistName.charAt(0).toUpperCase()}
+      size={340}
+      scale={breathe}
+    />
+  );
+
+  let body: React.ReactNode;
+  if (performers && performers.length >= 3) {
+    body = <PerformerChips performers={performers} breathe={breathe} />;
+  } else if (performers && performers.length === 2) {
+    body = (
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          display: "flex",
+          // The gap shows the container through as a hairline divider.
+          gap: 2,
+          background: "rgba(255, 255, 255, 0.14)",
+        }}
+      >
+        {performers.map((p, i) => (
+          <PerformerPanel
+            key={`${p.name}-${i}`}
+            performer={p}
+            breathe={breathe}
+          />
+        ))}
+      </div>
+    );
+  } else {
+    body = (
+      <>
+        {artistImage ? (
+          <Photo
+            src={artistImage}
+            framing={artistFraming}
+            breathe={breathe}
+            fallback={soloFallback}
+          />
+        ) : (
+          soloFallback
+        )}
+
+        {/* Bottom vignette so the frame edge reads on any photo */}
+        <Vignette />
+      </>
+    );
+  }
+
   return (
     <div
       style={{
         position: "absolute",
         top: 258,
         left: 130,
-        width: 820,
-        height: 560,
+        width: PLAYER_FRAME.width,
+        height: PLAYER_FRAME.height,
         borderRadius: 26,
         overflow: "hidden",
         border: "2px solid rgba(255, 255, 255, 0.14)",
         background: "#0b0b0b",
       }}
     >
-      {artistImage ? (
-        <Img
-          src={artistImage}
-          style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            objectPosition: "center top",
-            transform: `scale(${breathe})`,
-          }}
-        />
-      ) : (
-        <div
-          style={{
-            width: "100%",
-            height: "100%",
-            background: "#111111",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <div
-            style={{
-              fontFamily: brandFont,
-              fontSize: 340,
-              lineHeight: 1,
-              color: "#222222",
-              transform: `scale(${breathe})`,
-            }}
-          >
-            {artistName.charAt(0).toUpperCase()}
-          </div>
-        </div>
-      )}
-
-      {/* Bottom vignette so the frame edge reads on any photo */}
-      <div
-        style={{
-          position: "absolute",
-          bottom: 0,
-          left: 0,
-          width: "100%",
-          height: "35%",
-          background:
-            "linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%)",
-        }}
-      />
+      {body}
 
       {/* LIVE pill - top left */}
       <div
@@ -311,6 +656,19 @@ const AvatarCircle: React.FC<{
     ? accent
     : AVATAR_COLORS[(slot - 1) % AVATAR_COLORS.length];
 
+  const chipLabel = (
+    <span
+      style={{
+        fontFamily: brandFont,
+        fontSize: 56,
+        lineHeight: 1,
+        color: isYou ? "#000000" : "#ffffff",
+      }}
+    >
+      {isYou ? "YOU" : label.slice(0, 2).toUpperCase()}
+    </span>
+  );
+
   // The slot always reserves its space so the row never reflows mid-arrival.
   return (
     <div
@@ -325,6 +683,7 @@ const AvatarCircle: React.FC<{
     >
       <div
         style={{
+          position: "relative",
           width: 108,
           height: 108,
           borderRadius: "50%",
@@ -339,21 +698,13 @@ const AvatarCircle: React.FC<{
         }}
       >
         {image && !isYou ? (
-          <Img
+          <SafeImg
             src={image}
             style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            fallback={chipLabel}
           />
         ) : (
-          <span
-            style={{
-              fontFamily: brandFont,
-              fontSize: 56,
-              lineHeight: 1,
-              color: isYou ? "#000000" : "#ffffff",
-            }}
-          >
-            {isYou ? "YOU" : label.slice(0, 2).toUpperCase()}
-          </span>
+          chipLabel
         )}
       </div>
     </div>
@@ -542,6 +893,8 @@ export const PullUp: React.FC<PullUpProps> = ({
   eventTime,
   avatars,
   chatLines,
+  performers,
+  artistFraming,
   seed = 0,
   // B (pre-show venue) is the shipped bed; A, C and the synthesised "base"
   // stay selectable through this prop.
@@ -568,10 +921,16 @@ export const PullUp: React.FC<PullUpProps> = ({
     }
   }
 
+  // A shared booking leads with the night; the caption carries the bill.
+  const bill = performers && performers.length >= 2 ? performers : null;
+
   const day = eventDay.toUpperCase();
   const artist = artistName.toUpperCase();
   const headlineText = `COME WATCH ${artist} LIVE`;
   const streamingText = `STREAMING ${day} ${eventTime}`;
+  const captionText = `${day} ${eventTime} \u00b7 ${
+    bill ? bill.map((p) => p.name.toUpperCase()).join(" \u00d7 ") : artist
+  }`;
 
   const headlinePunch = punch(frame, 0, HEADLINE_PUNCH_END, 0.1);
   const askPunch = punch(frame, ASK_PUNCH_START, ASK_PUNCH_END, 0.06);
@@ -628,6 +987,8 @@ export const PullUp: React.FC<PullUpProps> = ({
       <PlayerFrame
         artistName={artistName}
         artistImage={artistImage}
+        artistFraming={artistFraming}
+        performers={bill}
         viewers={viewers}
       />
 
@@ -641,13 +1002,14 @@ export const PullUp: React.FC<PullUpProps> = ({
           height: 42,
           textAlign: "center",
           fontFamily: bodyFont,
-          fontSize: 32,
+          fontSize: fitCaptionSize(captionText, 940, 32),
           fontWeight: 700,
           letterSpacing: 5,
           color: "#8a8a8a",
+          whiteSpace: "nowrap",
         }}
       >
-        {day} {eventTime} · {artist}
+        {captionText}
       </div>
 
       {/* The ask - on screen from frame 0, never leaves */}

@@ -19,7 +19,7 @@ tokens or `.env` for the recap videos: every API they read is public.
 |---|---|---|---|
 | **ArtistRecap** ("Who Showed Up") | An artist's last N shows: who came, who stayed, who was new, plus a target to beat next time | One artist, within a day of their show | `bun run render:recap "Tj Gee"` |
 | **HouseWeekly** | The week's board: every artist ranked by the crowd they brought, four badges, the 8-week house line, next week's lineup | The artist group chat, Monday morning | `bun run render:weekly-board --end 2026-09-03` |
-| **PullUp** | 10 s looping "I'm on tonight, pull up" clip per event | Artists forward it to friends before a show | `bun run render:pullup` |
+| **PullUp** | 10 s looping "I'm on tonight, pull up" clip per event. A shared booking - two or more artists on one reservation - gets a single clip led by the event title, with everyone on the bill in the stream window | Artists forward it to friends before a show | `bun run render:pullup` |
 | **WeeklyLineup** | This week's lineup as a story | Instagram story | `bun run render:weekly` |
 
 Output lands in `out/` (gitignored). A clip takes 1–2 minutes to render.
@@ -53,6 +53,37 @@ just ended.
 bun run render:pullup          # pick from the next 5 events
 bun run render:pullup --all    # every approved event in the next 7 days
 bun run render:weekly          # prompts for a bearer token; Enter = public endpoint
+```
+
+PullUp writes `out/PullUp-{name}-{YYYY-MM-DD}.mp4`, one file per event:
+
+- **One artist** - named after the artist, their photo in the stream window.
+- **Two or more artists on the same reservation** - one file named after the
+  event (`out/PullUp-beatshopping-2026-09-11.mp4`), with the headline and the
+  chat leading with the night rather than one name. Two artists share the
+  window side by side; three or more become a row of chips. Everybody on the
+  bill is named.
+- **No artists linked** - the purpose line stands in, same as WeeklyLineup.
+
+The event title is the `purpose` with its `Radio:` / `Reserved:` / `Private:`
+prefix stripped. Shared clips seed their randomness on the event alone, so
+re-rendering one after the bill changes gives back the same room and chat.
+
+**Photos.** The preflight fetches each photo, detects the primary face and
+works out how to hang it in the window (`src/pullup/framing.ts`): normally a
+crop slid onto the face with headroom, and for a headshot too tight to crop
+at all, the whole photo over a blurred, darkened copy of itself. A photo with
+no face, or with the detector unavailable, keeps the plain top-anchored crop.
+One that will not load falls back to the artist's initials - including hosts
+that answer the preflight and then block Remotion's Chromium.
+
+Face detection rides on `sharp`, `@vladmandic/human` and
+`@tensorflow/tfjs-node`, which are **optional dependencies**: they are large,
+and tfjs-node has no prebuilt binary for every platform. Rendering works
+without them, just without face-aware framing. Check one photo by hand with:
+
+```
+bun scripts/face-detect.ts <image-url>
 ```
 
 ### Just the numbers
@@ -99,6 +130,9 @@ and [#11 here](https://github.com/JollyGrin/waterhouse-remotion/issues/11).
 src/ArtistRecap.tsx         the recap composition (5 beats, 600 frames)
 src/HouseWeekly.tsx         the weekly board (5 beats, 750 frames)
 src/PullUp.tsx              per-event loop
+src/pullup/plan.ts          reservations -> render jobs (solo vs shared)
+src/pullup/framing.ts       face box -> how the photo hangs in the window
+scripts/face-detect.ts      the optional face detector behind that
 src/WeeklyLineup.tsx        lineup story
 src/audience/schema.ts      zod props schemas: the contract between data and video
 src/audience/metrics.ts     every definition above, with tests (bun test)
