@@ -67,6 +67,14 @@ const SHAPE_LEN = 120; // 375-495 the shape
 const ASK_FROM = 495;
 const ASK_LEN = 105; // 495-600 the ask
 
+// The hook's impact punch peaks at frame 6 (16% of its span) and is back at
+// rest well before frame 30, since some clients thumbnail a second in.
+const HOOK_PUNCH_END = 38;
+const HOOK_SLAM = 6;
+// The two sub-copy lines finish settling here; the ticks ride these frames.
+const SUB_SETTLE_1 = 10;
+const SUB_SETTLE_2 = 16;
+
 // Beyond this the rows stop being readable at story size; the rest collapse.
 const MAX_ROWS = 14;
 
@@ -231,18 +239,24 @@ const Hook: React.FC<{
   dateLabel: string;
 }> = ({ artistName, artistImage, showCount, dateLabel }) => {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
 
-  // The name slams in the PullUp way: oversized, then settles.
-  const slam = spring({
-    frame,
-    fps,
-    config: { damping: 13, stiffness: 190, mass: 0.7 },
-  });
-  const scale = interpolate(slam, [0, 1], [1.55, 1]);
-  const nameOpacity = fadeIn(frame, 0, 5);
-  const subOpacity = fadeIn(frame, 26, 12);
-  const subLift = interpolate(subOpacity, [0, 1], [26, 0]);
+  // WhatsApp previews frame 0, so the hook is fully composed and at rest
+  // there - avatar, name, sub-copy and footer all final. Nothing enters from
+  // nothing. The name's arrival is an impact punch in the PullUp sense
+  // instead: it starts and ends at rest, so frame 0 and frame 30 look the
+  // same and only the pulse between them moves.
+  const namePunch = punch(frame, 0, HOOK_PUNCH_END, 0.09);
+
+  // The sub-copy is legible from frame 0 and only settles the last few
+  // percent of its weight - enough for the two lines to read as arriving
+  // without either of them ever being absent.
+  const settle = (start: number, end: number) =>
+    interpolate(frame, [start, end], [0, 1], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+    });
+  const line1 = settle(0, SUB_SETTLE_1);
+  const line2 = settle(4, SUB_SETTLE_2);
 
   const headline = artistName.toUpperCase();
   const showLine = showCount === 1 ? "1 show." : `${showCount} shows.`;
@@ -268,7 +282,6 @@ const Hook: React.FC<{
             alignItems: "center",
             justifyContent: "center",
             marginBottom: 48,
-            opacity: nameOpacity,
           }}
         >
           {artistImage ? (
@@ -302,8 +315,7 @@ const Hook: React.FC<{
             lineHeight: 1,
             color: INK,
             whiteSpace: "nowrap",
-            transform: `scale(${scale})`,
-            opacity: nameOpacity,
+            transform: `scale(${namePunch})`,
           }}
         >
           {headline}
@@ -316,15 +328,27 @@ const Hook: React.FC<{
             fontSize: 56,
             fontWeight: 700,
             lineHeight: 1.25,
-            color: INK_2,
             textAlign: "center",
-            opacity: subOpacity,
-            transform: `translateY(${subLift}px)`,
           }}
         >
-          {showLine}
-          <br />
-          <span style={{ color: INK }}>Here&apos;s who showed up.</span>
+          <div
+            style={{
+              color: INK_2,
+              opacity: interpolate(line1, [0, 1], [0.82, 1]),
+              transform: `translateY(${interpolate(line1, [0, 1], [5, 0])}px)`,
+            }}
+          >
+            {showLine}
+          </div>
+          <div
+            style={{
+              color: INK,
+              opacity: interpolate(line2, [0, 1], [0.82, 1]),
+              transform: `translateY(${interpolate(line2, [0, 1], [5, 0])}px)`,
+            }}
+          >
+            Here&apos;s who showed up.
+          </div>
         </div>
       </AbsoluteFill>
     </Chrome>
@@ -1269,10 +1293,11 @@ const XAudio: React.FC<{
   sessions: SessionAudience[];
   newest: SessionAudience;
 }> = ({ sessions, newest }) => {
-  // Beat 1 - the name is at full size and full opacity by frame 5 (the spring
-  // hits 90% there), which is where the slam belongs.
-  const hookSlam = HOOK_FROM + 5;
-  const hookTicks = [HOOK_FROM + 26, HOOK_FROM + 32];
+  // Beat 1 - the name is composed from frame 0 now, so the slam rides the
+  // punch's peak rather than an arrival. The sub-copy no longer appears from
+  // nothing either, so its two ticks mark each line finishing its settle.
+  const hookSlam = HOOK_FROM + HOOK_SLAM;
+  const hookTicks = [HOOK_FROM + SUB_SETTLE_1, HOOK_FROM + SUB_SETTLE_2];
 
   // Beat 2 - a pop as each bar starts drawing, on the frame the playhead
   // reaches that viewer's arrival. Above ten rows only every other bar fires,
