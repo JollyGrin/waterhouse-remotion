@@ -19,7 +19,7 @@
 import { execFileSync } from "child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import {
-  ArtistRecapPropsSchema,
+  artistRecapPropsSchema,
   type ArtistRecapProps,
 } from "../src/audience/schema";
 import { ARTIST_RECAP_DURATION } from "../src/ArtistRecap";
@@ -91,7 +91,7 @@ function loadProps(
       process.exit(1);
     }
     console.log(`Reading ${FIXTURE}`);
-    return ArtistRecapPropsSchema.parse(
+    return artistRecapPropsSchema.parse(
       JSON.parse(readFileSync(FIXTURE, "utf-8")),
     );
   }
@@ -105,7 +105,7 @@ function loadProps(
       `${FETCH_SCRIPT} not found - falling back to ${FIXTURE}.\n` +
         "Merge the audience-data branch for live numbers.",
     );
-    return ArtistRecapPropsSchema.parse(
+    return artistRecapPropsSchema.parse(
       JSON.parse(readFileSync(FIXTURE, "utf-8")),
     );
   }
@@ -119,7 +119,7 @@ function loadProps(
     { stdio: ["ignore", "inherit", "inherit"] },
   );
 
-  return ArtistRecapPropsSchema.parse(JSON.parse(readFileSync(out, "utf-8")));
+  return artistRecapPropsSchema.parse(JSON.parse(readFileSync(out, "utf-8")));
 }
 
 function render(compositionId: string, outPath: string, propsPath?: string) {

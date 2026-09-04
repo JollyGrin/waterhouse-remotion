@@ -14,7 +14,7 @@ import { loadFont as loadJersey } from "@remotion/google-fonts/Jersey10";
 import { loadFont as loadGrotesk } from "@remotion/google-fonts/SpaceGrotesk";
 import { loadFont as loadMono } from "@remotion/google-fonts/IBMPlexMono";
 import {
-  ArtistRecapPropsSchema,
+  artistRecapPropsSchema,
   type ArtistRecapProps,
   type Quadrant,
   type SessionAudience,
@@ -34,7 +34,7 @@ const { fontFamily: monoFont } = loadMono("normal", {
   subsets: ["latin"],
 });
 
-export const ArtistRecapSchema = ArtistRecapPropsSchema;
+export const ArtistRecapSchema = artistRecapPropsSchema;
 export type { ArtistRecapProps };
 
 // --- Palette (the spec's dark tokens, on the black PullUp ground) ---
@@ -1140,8 +1140,10 @@ const Ask: React.FC<{
   const target = bestCrowd + 1;
   const beatText = `BEAT ${target}`;
 
+  // The canonical schema spells the time "7pm", not "19:00", so the whole
+  // headline gets cased rather than just the day - Jersey 10 is a caps face.
   const slotHeadline = nextSlot
-    ? `${nextSlot.dayLabel.toUpperCase()} ${nextSlot.time}`
+    ? `${nextSlot.dayLabel} ${nextSlot.time}`.toUpperCase()
     : "NEXT SLOT: TBA";
 
   return (
