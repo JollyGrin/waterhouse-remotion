@@ -1,6 +1,7 @@
 import React from "react";
 import {
   AbsoluteFill,
+  Audio,
   Img,
   Sequence,
   interpolate,
@@ -421,6 +422,29 @@ const TypedLine: React.FC<{
   );
 };
 
+const chunkLen = (cs: Chunk[]) => cs.reduce((n, c) => n + c.text.length, 0);
+
+// The two count lines, built once so the beat that types them and the audio
+// that ticks along with them can never drift apart.
+function buildCountLines(session: SessionAudience) {
+  const dot: Chunk = { text: " · ", color: GREY };
+  const line1: Chunk[] = [
+    { text: `${session.uniques} in the room`, color: INK },
+    dot,
+    { text: `${session.crowd} yours`, color: INK },
+    dot,
+    { text: `${session.pulled} new`, color: ACCENT },
+    dot,
+    { text: `held ${pct(session.holdRate)}%`, color: INK_2 },
+  ];
+  // Chat is out of the videos until there is data to show. The nullable `chat`
+  // field stays in the schema, but no beat reads it. Follows keeps its line
+  // even at zero, phrased label-first so it reads the same as the trend beat's
+  // "Follows 0 -> 1".
+  const line2: Chunk[] = [{ text: `follows ${session.follows}`, color: INK_2 }];
+  return { line1, line2, total: chunkLen(line1) + chunkLen(line2) };
+}
+
 const CHART_LEFT = PAD + 108;
 const CHART_RIGHT = W - PAD;
 const CHART_WIDTH = CHART_RIGHT - CHART_LEFT;
@@ -483,23 +507,8 @@ const WhoShowedUp: React.FC<{ session: SessionAudience }> = ({ session }) => {
   const ticks: number[] = [];
   for (let m = 30; m < dur; m += 30) ticks.push(m);
 
-  const dot: Chunk = { text: " · ", color: GREY };
-  const line1: Chunk[] = [
-    { text: `${session.uniques} in the room`, color: INK },
-    dot,
-    { text: `${session.crowd} yours`, color: INK },
-    dot,
-    { text: `${session.pulled} new`, color: ACCENT },
-    dot,
-    { text: `held ${pct(session.holdRate)}%`, color: INK_2 },
-  ];
-  // Chat is out of the videos until there is data to show. The nullable `chat`
-  // field stays in the schema, but no beat reads it. Follows keeps its line
-  // even at zero, phrased label-first so it reads the same as the trend beat's
-  // "Follows 0 -> 1".
-  const line2: Chunk[] = [{ text: `follows ${session.follows}`, color: INK_2 }];
-  const len = (cs: Chunk[]) => cs.reduce((n, c) => n + c.text.length, 0);
-  const total = len(line1) + len(line2);
+  const { line1, line2, total } = buildCountLines(session);
+  const len = chunkLen;
   // The crowd line runs to ~43 characters; shrink rather than wrap it.
   const line1Size = Math.min(40, CONTENT_W / (len(line1) * 0.6));
   const typed = Math.floor(
@@ -1194,6 +1203,186 @@ const Ask: React.FC<{
   );
 };
 
+// --- Sound ---------------------------------------------------------------
+//
+// Shared kit with HouseWeekly, generated on the audience-data branch; see
+// public/audio/recap/README.md for what each file is for and the level plan.
+// Environmental, never musical: no key, no tempo, nothing that could clash
+// with whatever the viewer is already playing.
+//
+// The bed peaks 24 dB under the one-shots because these videos are read
+// rather than watched - it only exists so the gaps between beats do not feel
+// dead, and it must never pull the eye off a number.
+
+const sfx = (name: string) => staticFile(`audio/recap/${name}.wav`);
+
+// Source lengths, rounded up to whole frames so no tail is clipped early.
+const ONE_SHOT_FRAMES = {
+  slam: 9, // 0.300s
+  land: 7, // 0.220s
+  pop: 3, // 0.100s
+  tick: 2, // 0.045s
+  whoosh: 9, // 0.280s
+  rise: 18, // 0.600s
+} as const;
+
+type OneShot = keyof typeof ONE_SHOT_FRAMES;
+
+// The bed is 26s and pre-faded at both ends, but the clip trims at 20s - well
+// before its own fade-out - so the composition has to take it down itself.
+const BED_FADE_FRAMES = 45;
+
+// The whoosh is a tail, not a hit: it starts before the cut so it lands on the
+// beat it is introducing (README: ~0.15s early).
+const WHOOSH_LEAD = 4;
+
+/**
+ * Two of the same one-shot inside 3 frames read as one thin, flanged hit
+ * rather than two events, so the later one is dropped. Bar arrivals and typed
+ * characters both bunch up, and this is what keeps a dense row of them
+ * sounding like taps instead of a rattle.
+ */
+function spaceOut(frames: number[], minGap = 3): number[] {
+  const out: number[] = [];
+  for (const f of frames.slice().sort((a, b) => a - b)) {
+    if (out.length === 0 || f - out[out.length - 1] >= minGap) out.push(f);
+  }
+  return out;
+}
+
+const Cue: React.FC<{ at: number; shot: OneShot; volume?: number }> = ({
+  at,
+  shot,
+  volume = 0.7,
+}) => (
+  <Sequence
+    from={at}
+    durationInFrames={ONE_SHOT_FRAMES[shot]}
+    layout="none"
+    name={`sfx:${shot}`}
+  >
+    <Audio src={sfx(shot)} volume={volume} />
+  </Sequence>
+);
+
+const XAudio: React.FC<{
+  sessions: SessionAudience[];
+  newest: SessionAudience;
+}> = ({ sessions, newest }) => {
+  // Beat 1 - the name is at full size and full opacity by frame 5 (the spring
+  // hits 90% there), which is where the slam belongs.
+  const hookSlam = HOOK_FROM + 5;
+  const hookTicks = [HOOK_FROM + 26, HOOK_FROM + 32];
+
+  // Beat 2 - a pop as each bar starts drawing, on the frame the playhead
+  // reaches that viewer's arrival. Above ten rows only every other bar fires,
+  // then spaceOut thins whatever still bunches.
+  const { rows } = buildRows(newest);
+  const dur = Math.max(newest.durationMin, 1);
+  const step = rows.length > 10 ? 2 : 1;
+  const barPops = spaceOut(
+    rows
+      .filter((_, i) => i % step === 0)
+      .map(
+        (r) =>
+          BARS_FROM +
+          SWEEP_START +
+          (r.fromMin / dur) * (SWEEP_END - SWEEP_START),
+      )
+      .map(Math.round),
+  );
+
+  // Every 2nd character of the typed count lines. At ~1.6 frames per pair the
+  // 3-frame floor does most of the thinning, which is the point: it should
+  // read as typing, not as a buzz.
+  const { total } = buildCountLines(newest);
+  const typeTicks = spaceOut(
+    Array.from({ length: Math.ceil(total / 2) }, (_, i) =>
+      Math.round(
+        BARS_FROM + TYPE_START + ((i * 2) / total) * (TYPE_END - TYPE_START),
+      ),
+    ),
+  );
+
+  // Beat 3 - a land as each bar reaches height (the spring is at 90% eight
+  // frames in). Four at most, kept from the newest end so the last show always
+  // gets one.
+  const n = sessions.length;
+  const landIndexes: number[] = [];
+  for (let i = Math.max(0, n - 4); i < n; i++) landIndexes.push(i);
+  const trendLands = landIndexes.map(
+    (i) => TREND_FROM + BAR_IN + i * BAR_STAGGER + 8,
+  );
+
+  // Only on a rise, and only where "BEST SO FAR." is actually on screen to
+  // land on - a flat trend gets nothing extra, and neither does a lone bar.
+  const prev = n > 1 ? sessions[n - 2] : null;
+  const rose = prev ? newest.crowd >= prev.crowd : false;
+  const isBest =
+    n > 1 && newest.crowd >= Math.max(...sessions.map((s) => s.crowd));
+  const trendSlam = rose && isBest ? TREND_FROM + 76 : null;
+
+  // Beat 5 - rise runs the 18 frames straight into the slam, exactly as the
+  // kit is cut for. Nothing sounds after it; the last visual settles at 559.
+  const beatLands = ASK_FROM + 30;
+
+  return (
+    <>
+      {/* Room tone under everything, taken to silence before the last frame
+          so the clip loops on the ask without a seam. */}
+      <Sequence
+        durationInFrames={ARTIST_RECAP_DURATION}
+        layout="none"
+        name="bed"
+      >
+        <Audio
+          src={sfx("bed")}
+          volume={(f) =>
+            interpolate(
+              f,
+              [
+                ARTIST_RECAP_DURATION - BED_FADE_FRAMES,
+                ARTIST_RECAP_DURATION - 1,
+              ],
+              [1, 0],
+              { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+            )
+          }
+        />
+      </Sequence>
+
+      <Cue at={hookSlam} shot="slam" />
+      {hookTicks.map((f) => (
+        <Cue key={f} at={f} shot="tick" />
+      ))}
+
+      {[BARS_FROM, TREND_FROM, SHAPE_FROM, ASK_FROM].map((f) => (
+        <Cue key={f} at={f - WHOOSH_LEAD} shot="whoosh" />
+      ))}
+
+      {barPops.map((f) => (
+        <Cue key={f} at={f} shot="pop" />
+      ))}
+      {typeTicks.map((f) => (
+        <Cue key={f} at={f} shot="tick" volume={0.5} />
+      ))}
+
+      {trendLands.map((f) => (
+        <Cue key={f} at={f} shot="land" />
+      ))}
+      {trendSlam === null ? null : (
+        <Cue at={trendSlam} shot="slam" volume={0.8} />
+      )}
+
+      <Cue at={SHAPE_FROM + 10} shot="pop" />
+      <Cue at={SHAPE_FROM + 58} shot="land" />
+
+      <Cue at={beatLands - ONE_SHOT_FRAMES.rise} shot="rise" />
+      <Cue at={beatLands} shot="slam" volume={1} />
+    </>
+  );
+};
+
 // --- Composition ---------------------------------------------------------
 export const ArtistRecap: React.FC<ArtistRecapProps> = ({
   artistName,
@@ -1207,6 +1396,8 @@ export const ArtistRecap: React.FC<ArtistRecapProps> = ({
 
   return (
     <AbsoluteFill style={{ backgroundColor: BG }}>
+      <XAudio sessions={sessions} newest={newest} />
+
       <Sequence from={HOOK_FROM} durationInFrames={HOOK_LEN}>
         <Hook
           artistName={artistName}
