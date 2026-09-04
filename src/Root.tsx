@@ -15,7 +15,7 @@ import {
 } from "./ArtistRecap";
 import {
   HouseWeekly,
-  HouseWeeklySchema,
+  houseWeeklyPropsSchema,
   HOUSEWEEKLY_DURATION,
 } from "./HouseWeekly";
 import recapFixture from "./audience/fixtures/recap.json";
@@ -163,24 +163,24 @@ export const RemotionRoot: React.FC = () => {
       <Composition
         id="HouseWeekly"
         component={HouseWeekly}
-        schema={HouseWeeklySchema}
+        schema={houseWeeklyPropsSchema}
         durationInFrames={HOUSEWEEKLY_DURATION}
         fps={30}
         width={1080}
         height={1920}
-        defaultProps={HouseWeeklySchema.parse(weeklyFixture)}
+        defaultProps={houseWeeklyPropsSchema.parse(weeklyFixture)}
       />
       {/* A one-show week: single board row, badges mostly unearned, no lineup
           for next week yet. The thin end of the data. */}
       <Composition
         id="HouseWeeklyFallback"
         component={HouseWeekly}
-        schema={HouseWeeklySchema}
+        schema={houseWeeklyPropsSchema}
         durationInFrames={HOUSEWEEKLY_DURATION}
         fps={30}
         width={1080}
         height={1920}
-        defaultProps={HouseWeeklySchema.parse(weeklyFallbackFixture)}
+        defaultProps={houseWeeklyPropsSchema.parse(weeklyFallbackFixture)}
       />
       {/* Second demo artist - no photo, no genre: exercises the fallbacks. */}
       <Composition

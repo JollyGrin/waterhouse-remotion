@@ -109,8 +109,6 @@ export const boardRowSchema = z.object({
   pulled: z.number(),
   returning: z.number(),
   uniques: z.number(),
-  /** the artist's max peak_viewers across their sessions that week */
-  peak: z.number(),
   holdRate: z.number(),
   /** Highest peak concurrent viewers across their sessions this week. */
   peak: z.number(),

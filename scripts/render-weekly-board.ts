@@ -10,7 +10,7 @@
  *   bun scripts/render-weekly-board.ts --props out/x.json  # props you already have
  *
  * Live data comes from `scripts/fetch-audience.ts week`, which this script
- * runs for you. Props are validated against HouseWeeklySchema before the
+ * runs for you. Props are validated against houseWeeklyPropsSchema before the
  * renderer is ever started, so a data problem fails in a second rather than
  * after a two-minute encode.
  *
@@ -19,7 +19,7 @@
 
 import { execFileSync } from "child_process";
 import { existsSync, mkdirSync, readFileSync } from "fs";
-import { HouseWeeklySchema } from "../src/audience/schema";
+import { houseWeeklyPropsSchema } from "../src/audience/schema";
 
 const FETCH_SCRIPT = "scripts/fetch-audience.ts";
 const FIXTURE = "src/audience/fixtures/weekly.json";
@@ -116,11 +116,11 @@ async function main() {
   }
 
   // Validate before rendering: a bad shape should cost a second, not an encode.
-  const parsed = HouseWeeklySchema.safeParse(
+  const parsed = houseWeeklyPropsSchema.safeParse(
     JSON.parse(readFileSync(propsPath, "utf-8")),
   );
   if (!parsed.success) {
-    console.error(`Props at ${propsPath} do not match HouseWeeklySchema:`);
+    console.error(`Props at ${propsPath} do not match houseWeeklyPropsSchema:`);
     for (const issue of parsed.error.issues) {
       console.error(`  ${issue.path.join(".") || "(root)"}: ${issue.message}`);
     }

@@ -14,7 +14,7 @@ import { loadFont as loadJersey } from "@remotion/google-fonts/Jersey10";
 import { loadFont as loadGrotesk } from "@remotion/google-fonts/SpaceGrotesk";
 import { loadFont as loadMono } from "@remotion/google-fonts/IBMPlexMono";
 import {
-  HouseWeeklySchema,
+  houseWeeklyPropsSchema,
   type Badge,
   type BoardRow,
   type HouseWeeklyProps,
@@ -33,7 +33,7 @@ const { fontFamily: monoFont } = loadMono("normal", {
   subsets: ["latin"],
 });
 
-export { HouseWeeklySchema };
+export { houseWeeklyPropsSchema };
 export type { HouseWeeklyProps };
 
 // --- Palette ---
@@ -556,12 +556,14 @@ const TheBoard: React.FC<Pick<HouseWeeklyProps, "rows">> = ({ rows }) => {
         ))}
       </div>
 
+      {/* Top-anchored, not centred: a real week is three or four shows, and
+          centring a short board left a hole under the glossary. */}
       <div
         style={{
           flex: 1,
           display: "flex",
           flexDirection: "column",
-          justifyContent: "center",
+          marginTop: 40,
         }}
       >
         <div
