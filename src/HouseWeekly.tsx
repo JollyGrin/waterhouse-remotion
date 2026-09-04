@@ -19,7 +19,7 @@ import {
 } from "./audience/schema";
 
 // Same brand pairing as WeeklyLineup and PullUp: Jersey 10 headlines, Space
-// Grotesk body. Plex Mono carries the data chrome - labels, ranks, rates -
+// Grotesk body. Plex Mono carries the data chrome - labels, ranks, substats -
 // so numbers never fight the display face for attention.
 const { fontFamily: brandFont } = loadJersey();
 const { fontFamily: bodyFont } = loadGrotesk("normal", {
@@ -40,7 +40,6 @@ const INK = "#F1F1EE";
 const INK_2 = "#C4C4CB";
 const GREY = "#8F8F98";
 const LINE = "#2B2B31";
-const PANEL = "#1B1B1F";
 const ACCENT = "#FF5C93";
 
 // --- Timing (30fps, 750 frames = 25s) ---
@@ -61,20 +60,12 @@ const HOUSE_LENGTH = 120; // 480-600 the house line
 const NEXT_START = 600;
 const NEXT_LENGTH = 150; // 600-750 next week
 
-// Eight rows at one per 30 frames fills the board beat exactly. Past eight,
-// the whole board still has to land inside the same window, so the stagger
-// tightens instead of the board losing anyone.
-//
-// The legend under the header has to be settled before anything moves under
-// it, so the rows wait out its fade before the first one arrives.
+// The glossary under the header has to be settled before anything moves under
+// it, so the rows wait out its fade before the first one arrives. Seven rows
+// at one per 30 frames then fills what is left of the beat exactly.
+export const BOARD_ROW_CAP = 7;
 const BOARD_LEAD_IN = 14;
-const BOARD_ROW_WINDOW = BOARD_LENGTH - BOARD_LEAD_IN - 30;
-const BOARD_ROW_ANIM = 30;
-export const boardRowStagger = (rowCount: number): number =>
-  Math.min(
-    BOARD_ROW_ANIM,
-    Math.floor(BOARD_ROW_WINDOW / Math.max(1, rowCount - 1)),
-  );
+const BOARD_ROW_STAGGER = 30;
 
 // --- Small helpers ---
 
@@ -108,11 +99,19 @@ const fadeUp = (frame: number, delay: number, distance = 28) => {
 
 const pct = (holdRate: number) => `${Math.round(holdRate * 100)}%`;
 
+// Spoke is the one substat that can be missing: chat capture only exists from
+// the day it shipped, and Twitch keeps no history before it.
+const spoke = (row: BoardRow) =>
+  row.chat ? `${row.chat.chatters}/${row.uniques}` : "—";
+
+const substatLine = (row: BoardRow) =>
+  `pulled ${row.pulled} · hold ${pct(row.holdRate)} · peak ${row.peak} · follows ${row.follows} · spoke ${spoke(row)}`;
+
 // --- Frame chrome: eyebrow at the top, watermark at the foot ---
 const Frame: React.FC<{
   label: string;
   left: string;
-  right: string;
+  right?: string;
   children: React.ReactNode;
 }> = ({ label, left, right, children }) => {
   const frame = useCurrentFrame();
@@ -167,7 +166,7 @@ const Frame: React.FC<{
         }}
       >
         <span>{left}</span>
-        <span>{right}</span>
+        {right ? <span>{right}</span> : null}
       </div>
     </AbsoluteFill>
   );
@@ -177,9 +176,9 @@ const Frame: React.FC<{
 const TheWeek: React.FC<
   Pick<
     HouseWeeklyProps,
-    "rangeLabel" | "weekLabel" | "shows" | "uniques" | "pulled"
+    "rangeLabel" | "weekLabel" | "shows" | "uniques" | "pulled" | "follows"
   >
-> = ({ rangeLabel, weekLabel, shows, uniques, pulled }) => {
+> = ({ rangeLabel, weekLabel, shows, uniques, pulled, follows }) => {
   const frame = useCurrentFrame();
 
   return (
@@ -196,12 +195,12 @@ const TheWeek: React.FC<
           <div
             style={{
               fontFamily: brandFont,
-              fontSize: 340,
+              fontSize: 320,
               lineHeight: 0.82,
               color: INK,
             }}
           >
-            {countUp(frame, 6, 40, shows)}
+            {countUp(frame, 6, 36, shows)}
           </div>
           <div
             style={{
@@ -219,7 +218,7 @@ const TheWeek: React.FC<
           style={{
             height: 2,
             background: LINE,
-            margin: "56px 0",
+            margin: "52px 0",
             width: interpolate(frame, [10, 46], [0, 936], {
               extrapolateLeft: "clamp",
               extrapolateRight: "clamp",
@@ -228,16 +227,16 @@ const TheWeek: React.FC<
           }}
         />
 
-        <div style={fadeUp(frame, 24)}>
+        <div style={fadeUp(frame, 22)}>
           <div
             style={{
               fontFamily: brandFont,
-              fontSize: 240,
+              fontSize: 230,
               lineHeight: 0.82,
               color: INK,
             }}
           >
-            {countUp(frame, 26, 62, uniques)}
+            {countUp(frame, 24, 56, uniques)}
           </div>
           <div
             style={{
@@ -251,7 +250,7 @@ const TheWeek: React.FC<
           </div>
         </div>
 
-        <div style={{ ...fadeUp(frame, 46), marginTop: 44 }}>
+        <div style={{ ...fadeUp(frame, 40), marginTop: 40 }}>
           <div
             style={{
               fontFamily: bodyFont,
@@ -260,7 +259,20 @@ const TheWeek: React.FC<
               color: ACCENT,
             }}
           >
-            {countUp(frame, 48, 82, pulled)} new to the house
+            {countUp(frame, 42, 72, pulled)} new to the house
+          </div>
+        </div>
+
+        <div style={{ ...fadeUp(frame, 56), marginTop: 16 }}>
+          <div
+            style={{
+              fontFamily: bodyFont,
+              fontSize: 46,
+              fontWeight: 700,
+              color: INK_2,
+            }}
+          >
+            {countUp(frame, 58, 86, follows)} new follows
           </div>
         </div>
       </div>
@@ -269,12 +281,34 @@ const TheWeek: React.FC<
 };
 
 // --- Beat 2 (90-330): the board ---
+
+// One glossary line per number on the board. Nobody reading this on a phone
+// on a Monday has a reason to know the house vocabulary.
+const GLOSSARY: { term: string; rest: string }[] = [
+  {
+    term: "CROWD",
+    rest: " — the room you brought: new faces plus your own returning people.",
+  },
+  {
+    term: "PULLED",
+    rest: " — new faces. Hadn't watched any Waterhouse stream in the past 30 days.",
+  },
+  {
+    term: "HOLD",
+    rest: " — share of your viewers who stuck around, not just a drop-in.",
+  },
+  { term: "PEAK", rest: " — most people watching at once." },
+  { term: "FOLLOWS", rest: " — new follows during your set." },
+  { term: "SPOKE", rest: " — how many people chatted, out of everyone there." },
+];
+
 const BoardRowLine: React.FC<{
   row: BoardRow;
   rank: number;
   delay: number;
   rowHeight: number;
-}> = ({ row, rank, delay, rowHeight }) => {
+  maxCrowd: number;
+}> = ({ row, rank, delay, rowHeight, maxCrowd }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
@@ -291,108 +325,96 @@ const BoardRowLine: React.FC<{
     easing: Easing.out(Easing.cubic),
   });
 
-  const nameSize = Math.min(50, rowHeight * 0.46);
-  const pulledSize = Math.min(88, rowHeight * 0.82);
+  const nameSize = Math.min(50, rowHeight * 0.3);
+  const crowdSize = Math.min(88, rowHeight * 0.52);
+  const metaSize = Math.min(24, rowHeight * 0.15);
+
+  // The bar is scaled against the top of the board, so the leader fills it and
+  // everyone else is read against them. Pulled first, then returning.
+  const share = (n: number) => (maxCrowd > 0 ? (n / maxCrowd) * bar * 100 : 0);
 
   return (
     <div
       style={{
         height: rowHeight,
         display: "flex",
-        alignItems: "center",
-        gap: 18,
+        flexDirection: "column",
+        justifyContent: "center",
+        gap: 12,
         borderBottom: `1px solid ${LINE}`,
         opacity: enter,
         transform: `translateX(${interpolate(enter, [0, 1], [70, 0])}px)`,
       }}
     >
-      <div
-        style={{
-          width: 48,
-          flexShrink: 0,
-          fontFamily: monoFont,
-          fontSize: Math.min(30, rowHeight * 0.28),
-          color: GREY,
-        }}
-      >
-        {rank}
-      </div>
-
-      <div
-        style={{
-          flex: 1,
-          minWidth: 0,
-          fontFamily: bodyFont,
-          fontSize: nameSize,
-          fontWeight: 700,
-          color: INK,
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-        }}
-      >
-        {row.artistName}
-        {row.shared ? <span style={{ color: GREY }}>*</span> : null}
-      </div>
-
-      <div
-        style={{
-          width: 110,
-          flexShrink: 0,
-          textAlign: "right",
-          fontFamily: brandFont,
-          fontSize: pulledSize,
-          lineHeight: 0.9,
-          color: row.pulled > 0 ? ACCENT : GREY,
-        }}
-      >
-        {row.pulled}
-      </div>
-
-      {/* Peak is context, not a score - we rank on pulled on purpose, so this
-          stays a quiet grey number rather than competing with the accent. */}
-      <div
-        style={{
-          width: 90,
-          flexShrink: 0,
-          textAlign: "right",
-          fontFamily: monoFont,
-          fontSize: Math.min(28, rowHeight * 0.26),
-          color: GREY,
-        }}
-      >
-        {row.peak}
-      </div>
-
-      <div
-        style={{
-          width: 150,
-          flexShrink: 0,
-          height: Math.min(14, rowHeight * 0.13),
-          background: PANEL,
-        }}
-      >
+      <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
         <div
           style={{
-            width: `${Math.max(0, Math.min(1, row.holdRate)) * bar * 100}%`,
-            height: "100%",
-            background: INK,
+            width: 48,
+            flexShrink: 0,
+            fontFamily: monoFont,
+            fontSize: Math.min(30, rowHeight * 0.17),
+            color: GREY,
           }}
-        />
+        >
+          {rank}
+        </div>
+
+        <div
+          style={{
+            flex: 1,
+            minWidth: 0,
+            fontFamily: bodyFont,
+            fontSize: nameSize,
+            fontWeight: 700,
+            color: INK,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {row.artistName}
+          {row.shared ? <span style={{ color: GREY }}>*</span> : null}
+        </div>
+
+        <div
+          style={{
+            width: 90,
+            flexShrink: 0,
+            textAlign: "right",
+            fontFamily: brandFont,
+            fontSize: crowdSize,
+            lineHeight: 0.9,
+            color: row.crowd > 0 ? ACCENT : GREY,
+          }}
+        >
+          {row.crowd}
+        </div>
+
+        <div
+          style={{
+            width: 300,
+            flexShrink: 0,
+            height: Math.min(18, rowHeight * 0.1),
+            background: LINE,
+            display: "flex",
+          }}
+        >
+          <div style={{ width: `${share(row.pulled)}%`, background: ACCENT }} />
+          <div style={{ width: `${share(row.returning)}%`, background: INK }} />
+        </div>
       </div>
 
       <div
         style={{
-          width: 72,
-          flexShrink: 0,
-          textAlign: "right",
+          marginLeft: 48 + 18,
           fontFamily: monoFont,
-          fontSize: Math.min(28, rowHeight * 0.26),
-          color: INK_2,
+          fontSize: metaSize,
+          color: GREY,
+          whiteSpace: "nowrap",
           opacity: bar,
         }}
       >
-        {pct(row.holdRate)}
+        {substatLine(row)}
       </div>
     </div>
   );
@@ -400,51 +422,42 @@ const BoardRowLine: React.FC<{
 
 const TheBoard: React.FC<Pick<HouseWeeklyProps, "rows">> = ({ rows }) => {
   const frame = useCurrentFrame();
-  const stagger = boardRowStagger(rows.length);
-  const anyShared = rows.some((r) => r.shared);
 
-  // The rows own the vertical space between the column header and the
-  // footnote. Height per row shrinks so a twelve-artist week still fits.
-  const rowHeight = Math.min(140, Math.floor(1150 / Math.max(1, rows.length)));
+  const shown = rows.slice(0, BOARD_ROW_CAP);
+  const anyShared = shown.some((r) => r.shared);
+  const maxCrowd = Math.max(1, ...shown.map((r) => r.crowd));
 
-  // Two column headings are not self-explanatory to someone opening this on a
-  // phone on a Monday. The legend says what they mean in the artist's own
-  // terms, and lands before the board starts moving under it.
-  const legendIn = interpolate(frame, [0, 12], [0, 1], {
+  // Two-line rows, so the height per row is roughly double what a flat board
+  // needed. Seven of them still clear the footnote.
+  const rowHeight = Math.min(180, Math.floor(1330 / Math.max(1, shown.length)));
+
+  const glossaryIn = interpolate(frame, [0, 12], [0, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
 
   return (
-    <Frame label="Ranked by pulled · hold" left="Pulled" right="Hold">
+    <Frame label="Ranked by crowd" left="Crowd" right="Substats">
       <div
         style={{
-          marginTop: 36,
-          maxWidth: 900,
+          marginTop: 30,
           display: "flex",
           flexDirection: "column",
-          gap: 18,
+          gap: 8,
           fontFamily: monoFont,
-          fontSize: 26,
-          lineHeight: 1.5,
+          fontSize: 20,
+          lineHeight: 1.45,
           color: GREY,
-          opacity: legendIn,
+          whiteSpace: "nowrap",
+          opacity: glossaryIn,
         }}
       >
-        <div>
-          <span style={{ color: INK }}>PULLED</span> — new faces. People who
-          hadn&apos;t watched any Waterhouse stream in the past 30 days. You
-          brought them.
-        </div>
-        <div>
-          <span style={{ color: INK }}>HOLD</span> — who stuck around. The share
-          of your viewers who stayed for a real stretch of the set, not just a
-          drop-in.
-        </div>
-        <div>
-          <span style={{ color: INK }}>PEAK</span> — most people watching at
-          once.
-        </div>
+        {GLOSSARY.map((entry) => (
+          <div key={entry.term}>
+            <span style={{ color: INK }}>{entry.term}</span>
+            {entry.rest}
+          </div>
+        ))}
       </div>
 
       <div
@@ -457,44 +470,21 @@ const TheBoard: React.FC<Pick<HouseWeeklyProps, "rows">> = ({ rows }) => {
       >
         <div
           style={{
-            display: "flex",
-            gap: 18,
-            paddingBottom: 14,
-            borderBottom: `2px solid ${INK}`,
-            fontFamily: monoFont,
-            fontSize: 24,
-            letterSpacing: 3,
-            textTransform: "uppercase",
-            color: GREY,
-            opacity: interpolate(frame, [0, 12], [0, 1], {
-              extrapolateLeft: "clamp",
-              extrapolateRight: "clamp",
-            }),
+            height: 2,
+            background: INK,
+            opacity: glossaryIn,
           }}
-        >
-          <span style={{ width: 48, flexShrink: 0 }}>#</span>
-          <span style={{ flex: 1 }}>Artist</span>
-          <span style={{ width: 110, flexShrink: 0, textAlign: "right" }}>
-            Pulled
-          </span>
-          <span style={{ width: 90, flexShrink: 0, textAlign: "right" }}>
-            Peak
-          </span>
-          <span
-            style={{ width: 150 + 18 + 72, flexShrink: 0, textAlign: "right" }}
-          >
-            Hold
-          </span>
-        </div>
+        />
 
         <div style={{ display: "flex", flexDirection: "column" }}>
-          {rows.map((row, i) => (
+          {shown.map((row, i) => (
             <BoardRowLine
               key={`${row.artistName}-${i}`}
               row={row}
               rank={i + 1}
-              delay={BOARD_LEAD_IN + i * stagger}
+              delay={BOARD_LEAD_IN + i * BOARD_ROW_STAGGER}
               rowHeight={rowHeight}
+              maxCrowd={maxCrowd}
             />
           ))}
         </div>
@@ -518,11 +508,15 @@ const TheBoard: React.FC<Pick<HouseWeeklyProps, "rows">> = ({ rows }) => {
 };
 
 // --- Beat 3 (330-480): badges ---
+//
+// One badge per substat, so every behaviour the house wants to see has a
+// weekly winner and most artists take something home.
 const BADGE_LABELS: { key: Badge; label: string }[] = [
   { key: "most-pulled", label: "Most pulled" },
   { key: "held-the-room", label: "Held the room" },
+  { key: "most-follows", label: "Most follows" },
+  { key: "loudest-room", label: "Loudest room" },
   { key: "best-comeback", label: "Best comeback" },
-  { key: "stickiest", label: "Stickiest" },
 ];
 
 // A badge nobody earned still gets its row - the shape of the week is part of
@@ -530,8 +524,8 @@ const BADGE_LABELS: { key: Badge; label: string }[] = [
 const badgeWinner = (rows: BoardRow[], key: Badge): string => {
   const row = rows.find((r) => r.badges.includes(key));
   if (!row) return "—";
-  if (key === "best-comeback" && row.deltaUniques !== null) {
-    return `${row.artistName} +${row.deltaUniques}`;
+  if (key === "best-comeback" && row.deltaCrowd !== null) {
+    return `${row.artistName} +${row.deltaCrowd}`;
   }
   return row.artistName;
 };
@@ -548,7 +542,7 @@ const BadgeCard: React.FC<{ label: string; value: string; delay: number }> = ({
     <div
       style={{
         border: `3px solid ${earned ? INK : LINE}`,
-        padding: "34px 34px",
+        padding: "30px 34px",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
@@ -588,23 +582,15 @@ const BadgeCard: React.FC<{ label: string; value: string; delay: number }> = ({
 };
 
 const Badges: React.FC<Pick<HouseWeeklyProps, "rows">> = ({ rows }) => {
-  const winners = new Set(
-    rows.filter((r) => r.badges.length > 0).map((r) => r.artistName),
-  );
-
   return (
-    <Frame
-      label="This week's"
-      left="Badges"
-      right={`${winners.size} of ${rows.length} win`}
-    >
+    <Frame label="This week's" left={`Badges · ${BADGE_LABELS.length}`}>
       <div
         style={{
           flex: 1,
           display: "flex",
           flexDirection: "column",
           justifyContent: "center",
-          gap: 30,
+          gap: 28,
         }}
       >
         {BADGE_LABELS.map((badge, i) => (
@@ -855,6 +841,7 @@ export const HouseWeekly: React.FC<HouseWeeklyProps> = ({
   shows,
   uniques,
   pulled,
+  follows,
   rows,
   houseSeries,
   nextWeek,
@@ -868,6 +855,7 @@ export const HouseWeekly: React.FC<HouseWeeklyProps> = ({
           shows={shows}
           uniques={uniques}
           pulled={pulled}
+          follows={follows}
         />
       </Sequence>
 
