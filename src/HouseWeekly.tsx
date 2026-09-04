@@ -51,8 +51,10 @@ const ACCENT = "#FF5C93";
 // a crossfade would eat frames off every boundary.
 export const HOUSEWEEKLY_DURATION = 750;
 
-const WEEK_START = 0;
-const WEEK_LENGTH = 90; // 0-90    the week
+const TITLE_START = 0;
+const TITLE_LENGTH = 30; // 0-30    the title card
+const WEEK_START = 30;
+const WEEK_LENGTH = 60; // 30-90   the week
 const BOARD_START = 90;
 const BOARD_LENGTH = 240; // 90-330  the board
 const BADGES_START = 330;
@@ -72,10 +74,10 @@ const BOARD_ROW_STAGGER = 30;
 // Beat 1's four count-ups, [start, end] within the beat. The audio reads the
 // end of each one, so a land can never drift off the number it belongs to.
 const WEEK_COUNTS: [number, number][] = [
-  [6, 36], // shows
-  [24, 56], // people in the room
-  [42, 72], // new to the house
-  [58, 86], // new follows
+  [4, 24], // shows
+  [16, 37], // people in the room
+  [28, 48], // new to the house
+  [39, 57], // new follows
 ];
 
 const BADGE_IN = 10;
@@ -130,13 +132,16 @@ const Frame: React.FC<{
   label: string;
   left: string;
   right?: string;
+  /** Skip the chrome fade - the title card has to be composed on frame 0. */
+  atRest?: boolean;
   children: React.ReactNode;
-}> = ({ label, left, right, children }) => {
+}> = ({ label, left, right, atRest, children }) => {
   const frame = useCurrentFrame();
-  const chrome = interpolate(frame, [0, 12], [0, 1], {
+  const fade = interpolate(frame, [0, 12], [0, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
+  const chrome = atRest ? 1 : fade;
 
   return (
     <AbsoluteFill
@@ -190,7 +195,76 @@ const Frame: React.FC<{
   );
 };
 
-// --- Beat 1 (0-90): the week ---
+// An impact that starts and ends at rest, so frame 0 is the composed card
+// and nothing has to animate into place before the thumbnail is taken.
+function punch(frame: number, start: number, end: number, amount: number) {
+  const span = end - start;
+  return interpolate(
+    frame,
+    [start, start + span * 0.16, start + span * 0.45, end],
+    [1, 1 + amount, 1 - amount * 0.22, 1],
+    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+  );
+}
+
+// --- Beat 0 (0-30): the title card ---
+//
+// WhatsApp previews a video on its first frame, and a clip that opens on
+// count-ups from zero previews as black. This card is fully composed and at
+// rest on frame 0 and does not move until the punch at 6.
+const TITLE_PUNCH_AT = 6;
+
+const TitleCard: React.FC<
+  Pick<HouseWeeklyProps, "weekLabel" | "rangeLabel">
+> = ({ weekLabel, rangeLabel }) => {
+  const frame = useCurrentFrame();
+  const hit = punch(frame, TITLE_PUNCH_AT, TITLE_PUNCH_AT + 20, 0.06);
+
+  return (
+    <Frame label="Waterhouse" left="Waterhouse" right={weekLabel} atRest>
+      <div
+        style={{
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+        }}
+      >
+        <div
+          style={{
+            fontFamily: brandFont,
+            fontSize: 260,
+            lineHeight: 0.85,
+            color: INK,
+            transform: `scale(${hit})`,
+            transformOrigin: "left center",
+          }}
+        >
+          WHO
+          <br />
+          SHOWED
+          <br />
+          UP
+        </div>
+
+        <div
+          style={{
+            fontFamily: monoFont,
+            fontSize: 32,
+            letterSpacing: 3,
+            textTransform: "uppercase",
+            color: GREY,
+            marginTop: 44,
+          }}
+        >
+          {weekLabel} · {rangeLabel}
+        </div>
+      </div>
+    </Frame>
+  );
+};
+
+// --- Beat 1 (30-90): the week ---
 const TheWeek: React.FC<
   Pick<
     HouseWeeklyProps,
@@ -992,13 +1066,20 @@ const HouseWeeklyAudio: React.FC<
         />
       </Sequence>
 
+      {/* Beat 0: the card is already composed, so the only sound is the
+          impact under its punch. The heaviest thing in the kit, used once. */}
+      <Cue at={TITLE_PUNCH_AT} file="slam" frames={10} />
+
       {/* Beat 1: one settle per number as its count-up stops. */}
+      <Whoosh beatStart={WEEK_START} />
       {WEEK_COUNTS.map(([, end], i) => (
         <Cue key={`count-${i}`} at={WEEK_START + end} file="land" frames={8} />
       ))}
 
-      {/* Beat 2: the cut, the glossary appearing, then a row at a time. */}
-      <Whoosh beatStart={BOARD_START} />
+      {/* Beat 2: the cut, the glossary appearing, then a row at a time.
+          This whoosh alone takes no lead - the last count-up settles at 87,
+          and a whoosh at 86 flammed against it. */}
+      <Cue at={BOARD_START} file="whoosh" frames={10} />
       {/* Late enough in the glossary fade that the whoosh has decayed out
           from under it - at +4 the tick was inaudible beneath the tail. */}
       <Cue at={BOARD_START + 8} file="tick" frames={2} volume={0.5} />
@@ -1057,6 +1138,10 @@ export const HouseWeekly: React.FC<HouseWeeklyProps> = ({
   return (
     <AbsoluteFill style={{ backgroundColor: BG }}>
       <HouseWeeklyAudio rows={rows} nextWeek={nextWeek} />
+
+      <Sequence from={TITLE_START} durationInFrames={TITLE_LENGTH}>
+        <TitleCard weekLabel={weekLabel} rangeLabel={rangeLabel} />
+      </Sequence>
 
       <Sequence from={WEEK_START} durationInFrames={WEEK_LENGTH}>
         <TheWeek
