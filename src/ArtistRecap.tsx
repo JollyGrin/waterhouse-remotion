@@ -421,8 +421,26 @@ const TypedLine: React.FC<{
 const CHART_LEFT = PAD + 108;
 const CHART_RIGHT = W - PAD;
 const CHART_WIDTH = CHART_RIGHT - CHART_LEFT;
-const CHART_TOP = 430;
-const CHART_BOTTOM = 1300;
+const CHART_TOP = 500;
+const CHART_BOTTOM = 1440;
+const COUNT_LINE_TOP = 1560;
+const GLOSSARY_TOP = 150;
+// ~40 mono chars at 26px, which is where both entries break to three lines.
+const GLOSSARY_WIDTH = 630;
+
+// The two words the artist meets in every recap and on the weekly board.
+// Spelled out here verbatim as HouseWeekly spells them, so the two videos
+// teach the same vocabulary.
+const GLOSSARY: { term: string; text: string }[] = [
+  {
+    term: "PULLED",
+    text: " \u2014 new faces. People who hadn't watched any Waterhouse stream in the past 30 days. You brought them.",
+  },
+  {
+    term: "HOLD",
+    text: " \u2014 who stuck around. The share of your viewers who stayed for a real stretch of the set, not just a drop-in.",
+  },
+];
 
 const SWEEP_START = 12;
 const SWEEP_END = 116;
@@ -488,6 +506,34 @@ const WhoShowedUp: React.FC<{ session: SessionAudience }> = ({ session }) => {
       left="PRESENCE"
       right={durationLabel(session.durationMin)}
     >
+      {/* Settles before the first bar is drawn, so nothing competes for the
+          eye while the playhead runs. */}
+      <div
+        style={{
+          position: "absolute",
+          top: GLOSSARY_TOP,
+          left: PAD,
+          width: GLOSSARY_WIDTH,
+          opacity: fadeIn(frame, 0, 10),
+        }}
+      >
+        {GLOSSARY.map((g, i) => (
+          <div
+            key={g.term}
+            style={{
+              fontFamily: monoFont,
+              fontSize: 26,
+              lineHeight: 1.5,
+              color: GREY,
+              marginTop: i === 0 ? 0 : 26,
+            }}
+          >
+            <span style={{ color: INK, fontWeight: 600 }}>{g.term}</span>
+            {g.text}
+          </div>
+        ))}
+      </div>
+
       {empty ? (
         <div
           style={{
@@ -686,7 +732,7 @@ const WhoShowedUp: React.FC<{ session: SessionAudience }> = ({ session }) => {
       <div
         style={{
           position: "absolute",
-          top: 1420,
+          top: COUNT_LINE_TOP,
           left: PAD,
           width: CONTENT_W,
         }}
