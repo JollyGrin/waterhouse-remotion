@@ -37,6 +37,31 @@ bunx remotion render
 bunx remotion upgrade
 ```
 
+## Audience data ("Who Showed Up")
+
+`scripts/fetch-audience.ts` builds the props for the `ArtistRecap` and
+`HouseWeekly` compositions from the live event logger + Waterhouse APIs. All
+the counting lives in `src/audience/metrics.ts` (definitions of _pulled_,
+_came back_, _regular_, _stayed_, _holdRate_, the quadrant and the weekly
+badges); the compositions only draw. Schemas are in `src/audience/schema.ts`.
+
+```console
+bun scripts/fetch-audience.ts artist "Tj Gee" --n 4 --out out/recap-tj-gee.json
+bun scripts/fetch-audience.ts week --end 2026-09-03 --out out/weekly-2026-w36.json
+bun scripts/fetch-audience.ts --fixtures   # regenerates src/audience/fixtures/
+```
+
+Both endpoints are public, so no token is needed. Output never contains a
+Twitch login — viewers are two-character initials only, and the script fails
+loudly if a login makes it into the JSON. `src/audience/fixtures/{recap,weekly}.json`
+are checked in so the compositions can be built against real data.
+
+**Tests**
+
+```console
+bun test
+```
+
 ## Docs
 
 Get started with Remotion by reading the [fundamentals page](https://www.remotion.dev/docs/the-fundamentals).
