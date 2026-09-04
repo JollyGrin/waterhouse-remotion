@@ -89,15 +89,20 @@ const recapFallbackProps: ArtistRecapProps = {
       peak: 1,
       uniques: 0,
       pulled: 0,
-      cameBack: 0,
+      returning: 0,
       regulars: 0,
+      crowd: 0,
       holdRate: 0,
+      follows: 0,
+      // Before chat capture shipped, so spoke is omitted rather than shown as 0.
+      chat: null,
       quadrant: "quiet",
       shared: false,
       viewers: [],
     },
   ],
   bestUniques: 0,
+  bestCrowd: 0,
   nextSlot: null,
 };
 

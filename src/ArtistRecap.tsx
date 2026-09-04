@@ -45,10 +45,10 @@ const LINE = "#2B2B31";
 const PANEL = "#1B1B1F";
 const ACCENT = "#FF5C93";
 
-// Fill by kind: you pulled them (accent), they came back (ink), house (grey).
+// Fill by kind: new faces (accent), your returning people (ink), house (grey).
 const KIND_COLOR: Record<Viewer["kind"], string> = {
   pulled: ACCENT,
-  cameBack: INK,
+  returning: INK,
   regular: GREY,
 };
 
@@ -133,16 +133,19 @@ const EMPTY_SESSION: SessionAudience = {
   peak: 0,
   uniques: 0,
   pulled: 0,
-  cameBack: 0,
+  returning: 0,
   regulars: 0,
+  crowd: 0,
   holdRate: 0,
+  follows: 0,
+  chat: null,
   quadrant: "quiet",
   shared: false,
   viewers: [],
 };
 
 const COACHING: Record<Quadrant, string> = {
-  "packed-held": "Do it again.",
+  "packed-held": "Do it again. Ask them to follow.",
   "hype-cliff": "Ask 3 friends to stay 20 min.",
   "small-loyal": "Tell 3 more people.",
   quiet: "Post the slot twice this week.",
@@ -155,7 +158,7 @@ const QUADRANT_LABEL: Record<Quadrant, string> = {
   "hype-cliff": "Hype then cliff",
 };
 
-// Reading order of the 2x2: x = pulled (few -> many), y = held (held on top).
+// Reading order of the 2x2: x = crowd (small -> big), y = held (held on top).
 const QUADRANT_GRID: Quadrant[] = [
   "small-loyal",
   "packed-held",
@@ -421,9 +424,9 @@ const TypedLine: React.FC<{
 const CHART_LEFT = PAD + 108;
 const CHART_RIGHT = W - PAD;
 const CHART_WIDTH = CHART_RIGHT - CHART_LEFT;
-const CHART_TOP = 500;
-const CHART_BOTTOM = 1440;
-const COUNT_LINE_TOP = 1560;
+const CHART_TOP = 645;
+const CHART_BOTTOM = 1540;
+const COUNT_LINE_TOP = 1660;
 const GLOSSARY_TOP = 150;
 // ~40 mono chars at 26px, which is where both entries break to three lines.
 const GLOSSARY_WIDTH = 630;
@@ -435,6 +438,10 @@ const GLOSSARY: { term: string; text: string }[] = [
   {
     term: "PULLED",
     text: " \u2014 new faces. People who hadn't watched any Waterhouse stream in the past 30 days. You brought them.",
+  },
+  {
+    term: "YOURS",
+    text: " \u2014 your crowd. New faces plus the people who mainly come to Waterhouse for you.",
   },
   {
     term: "HOLD",
@@ -476,21 +483,31 @@ const WhoShowedUp: React.FC<{ session: SessionAudience }> = ({ session }) => {
   const ticks: number[] = [];
   for (let m = 30; m < dur; m += 30) ticks.push(m);
 
+  const dot: Chunk = { text: " · ", color: GREY };
   const line1: Chunk[] = [
     { text: `${session.uniques} in the room`, color: INK },
-  ];
-  const line2: Chunk[] = [
-    { text: `${session.pulled} pulled`, color: ACCENT },
-    { text: " · ", color: GREY },
-    { text: `${session.cameBack} came back`, color: INK },
-  ];
-  const line3: Chunk[] = [
+    dot,
+    { text: `${session.crowd} yours`, color: INK },
+    dot,
+    { text: `${session.pulled} new`, color: ACCENT },
+    dot,
     { text: `held ${pct(session.holdRate)}%`, color: INK_2 },
-    { text: " · ", color: GREY },
-    { text: `peak ${session.peak}`, color: INK_2 },
+  ];
+  // Spoke only exists for shows after chat capture shipped. No zero, no dash -
+  // the part is simply not there.
+  const line2: Chunk[] = [
+    {
+      text: `${session.follows} follow${session.follows === 1 ? "" : "s"}`,
+      color: INK_2,
+    },
+    ...(session.chat
+      ? [dot, { text: `${session.chat.chatters} spoke`, color: INK_2 }]
+      : []),
   ];
   const len = (cs: Chunk[]) => cs.reduce((n, c) => n + c.text.length, 0);
-  const total = len(line1) + len(line2) + len(line3);
+  const total = len(line1) + len(line2);
+  // The crowd line runs to ~43 characters; shrink rather than wrap it.
+  const line1Size = Math.min(40, CONTENT_W / (len(line1) * 0.6));
   const typed = Math.floor(
     interpolate(frame, [TYPE_START, TYPE_END], [0, total], {
       extrapolateLeft: "clamp",
@@ -705,8 +722,8 @@ const WhoShowedUp: React.FC<{ session: SessionAudience }> = ({ session }) => {
           >
             {(
               [
-                ["Pulled", ACCENT],
-                ["Came back", INK],
+                ["Pulled (new)", ACCENT],
+                ["Returning (yours)", INK],
                 ["Regular", GREY],
               ] as const
             ).map(([label, color]) => (
@@ -737,13 +754,8 @@ const WhoShowedUp: React.FC<{ session: SessionAudience }> = ({ session }) => {
           width: CONTENT_W,
         }}
       >
-        <TypedLine chunks={line1} revealed={typed} fontSize={54} />
-        <TypedLine chunks={line2} revealed={typed - len(line1)} fontSize={44} />
-        <TypedLine
-          chunks={line3}
-          revealed={typed - len(line1) - len(line2)}
-          fontSize={44}
-        />
+        <TypedLine chunks={line1} revealed={typed} fontSize={line1Size} />
+        <TypedLine chunks={line2} revealed={typed - len(line1)} fontSize={34} />
       </div>
     </Chrome>
   );
@@ -757,17 +769,18 @@ const BAR_STAGGER = 7;
 
 const Trend: React.FC<{
   sessions: SessionAudience[];
-  bestUniques: number;
-}> = ({ sessions, bestUniques }) => {
+  bestCrowd: number;
+}> = ({ sessions, bestCrowd }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
   const n = Math.max(sessions.length, 1);
+  // Uniques set the scale, since the faint room bar is always the taller one.
   const maxU = Math.max(1, ...sessions.map((s) => s.uniques));
   const newest = sessions[sessions.length - 1] ?? EMPTY_SESSION;
   const prev = sessions.length > 1 ? sessions[sessions.length - 2] : null;
   // A drop lands flat. Never punch a regression.
-  const rose = prev ? newest.uniques >= prev.uniques : true;
+  const rose = prev ? newest.crowd >= prev.crowd : true;
 
   const gap = 28;
   const barW = Math.min(240, (CONTENT_W - gap * (n - 1)) / n);
@@ -778,13 +791,14 @@ const Trend: React.FC<{
   const newestPunch = rose ? punch(frame, lastIn + 12, lastIn + 44, 0.07) : 1;
 
   const holdText = prev
-    ? `Hold rate ${pct(prev.holdRate)} → ${pct(newest.holdRate)}%`
-    : `Hold rate ${pct(newest.holdRate)}%`;
-  const isBest = sessions.length > 1 && newest.uniques >= bestUniques;
+    ? `Hold ${pct(prev.holdRate)} → ${pct(newest.holdRate)}% · ` +
+      `Follows ${prev.follows} → ${newest.follows}`
+    : `Hold ${pct(newest.holdRate)}% · Follows ${newest.follows}`;
+  const isBest = sessions.length > 1 && newest.crowd >= bestCrowd;
 
   return (
     <Chrome
-      eyebrow={`Uniques · last ${n} ${n === 1 ? "show" : "shows"}`}
+      eyebrow={`Your crowd · last ${n} ${n === 1 ? "show" : "shows"}`}
       left="TREND"
       right={`N = ${n}`}
     >
@@ -795,10 +809,23 @@ const Trend: React.FC<{
           config: { damping: 16, stiffness: 130, mass: 0.8 },
         });
         const isNewest = i === sessions.length - 1;
-        const h = Math.max(10, (s.uniques / maxU) * TREND_MAX_H) * grow;
+        const roomH = Math.max(10, (s.uniques / maxU) * TREND_MAX_H) * grow;
+        const h = Math.max(6, (s.crowd / maxU) * TREND_MAX_H) * grow;
         const x = rowLeft + i * (barW + gap);
         return (
           <div key={i}>
+            {/* The whole room, faint: the crowd bar is a share of it. */}
+            <div
+              style={{
+                position: "absolute",
+                left: x,
+                top: TREND_BASE - roomH,
+                width: barW,
+                height: roomH,
+                background: PANEL,
+                borderTop: `2px solid ${LINE}`,
+              }}
+            />
             <div
               style={{
                 position: "absolute",
@@ -815,7 +842,7 @@ const Trend: React.FC<{
               style={{
                 position: "absolute",
                 left: x,
-                top: TREND_BASE - h - 78,
+                top: TREND_BASE - roomH - 78,
                 width: barW,
                 textAlign: "center",
                 fontFamily: monoFont,
@@ -825,7 +852,7 @@ const Trend: React.FC<{
                 opacity: grow,
               }}
             >
-              {s.uniques}
+              {s.crowd}
             </div>
             {/* Every bar carries its slot. A drop with a time under it is
                 information; a drop alone is shame. */}
@@ -980,7 +1007,7 @@ const Shape: React.FC<{ session: SessionAudience }> = ({ session }) => {
                   opacity: numbers,
                 }}
               >
-                {session.pulled} pulled
+                {session.crowd} yours
                 <br />
                 {pct(session.holdRate)}% stayed
               </div>
@@ -1019,7 +1046,7 @@ const Shape: React.FC<{ session: SessionAudience }> = ({ session }) => {
         }}
       >
         <span>↑ HELD</span>
-        <span>PULLED →</span>
+        <span>CROWD →</span>
       </div>
 
       <div
@@ -1053,9 +1080,9 @@ function interpolateColorInk(t: number): string {
 // --- Beat 5 · The ask (495-600) ------------------------------------------
 const Ask: React.FC<{
   nextSlot: ArtistRecapProps["nextSlot"];
-  bestUniques: number;
+  bestCrowd: number;
   quadrant: Quadrant;
-}> = ({ nextSlot, bestUniques, quadrant }) => {
+}> = ({ nextSlot, bestCrowd, quadrant }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
@@ -1066,7 +1093,7 @@ const Ask: React.FC<{
   });
   const slotScale = interpolate(slotIn, [0, 1], [1.3, 1]);
   const beatPunch = punch(frame, 30, 66, 0.09);
-  const target = bestUniques + 1;
+  const target = bestCrowd + 1;
   const beatText = `BEAT ${target}`;
 
   const slotHeadline = nextSlot
@@ -1119,7 +1146,7 @@ const Ask: React.FC<{
             opacity: fadeIn(frame, 20, 12),
           }}
         >
-          Your best is {bestUniques}.
+          Your best crowd is {bestCrowd}.
         </div>
 
         <div
@@ -1161,7 +1188,7 @@ export const ArtistRecap: React.FC<ArtistRecapProps> = ({
   artistName,
   artistImage,
   sessions,
-  bestUniques,
+  bestCrowd,
   nextSlot,
 }) => {
   const newest =
@@ -1183,7 +1210,7 @@ export const ArtistRecap: React.FC<ArtistRecapProps> = ({
       </Sequence>
 
       <Sequence from={TREND_FROM} durationInFrames={TREND_LEN}>
-        <Trend sessions={sessions} bestUniques={bestUniques} />
+        <Trend sessions={sessions} bestCrowd={bestCrowd} />
       </Sequence>
 
       <Sequence from={SHAPE_FROM} durationInFrames={SHAPE_LEN}>
@@ -1193,7 +1220,7 @@ export const ArtistRecap: React.FC<ArtistRecapProps> = ({
       <Sequence from={ASK_FROM} durationInFrames={ASK_LEN}>
         <Ask
           nextSlot={nextSlot}
-          bestUniques={bestUniques}
+          bestCrowd={bestCrowd}
           quadrant={newest.quadrant}
         />
       </Sequence>
