@@ -64,7 +64,10 @@ const NEXT_LENGTH = 150; // 600-750 next week
 // Eight rows at one per 30 frames fills the board beat exactly. Past eight,
 // the whole board still has to land inside the same window, so the stagger
 // tightens instead of the board losing anyone.
-const BOARD_ROW_WINDOW = 210;
+// The legend under the header has to be settled before anything moves under
+// it, so the rows wait out its fade before the first one arrives.
+const BOARD_LEAD_IN = 14;
+const BOARD_ROW_WINDOW = BOARD_LENGTH - BOARD_LEAD_IN - 30;
 const BOARD_ROW_ANIM = 30;
 export const boardRowStagger = (rowCount: number): number =>
   Math.min(
@@ -388,8 +391,42 @@ const TheBoard: React.FC<Pick<HouseWeeklyProps, "rows">> = ({ rows }) => {
   // footnote. Height per row shrinks so a twelve-artist week still fits.
   const rowHeight = Math.min(140, Math.floor(1150 / Math.max(1, rows.length)));
 
+  // Two column headings are not self-explanatory to someone opening this on a
+  // phone on a Monday. The legend says what they mean in the artist's own
+  // terms, and lands before the board starts moving under it.
+  const legendIn = interpolate(frame, [0, 12], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+
   return (
     <Frame label="Ranked by pulled · hold" left="Pulled" right="Hold">
+      <div
+        style={{
+          marginTop: 36,
+          maxWidth: 900,
+          display: "flex",
+          flexDirection: "column",
+          gap: 18,
+          fontFamily: monoFont,
+          fontSize: 26,
+          lineHeight: 1.5,
+          color: GREY,
+          opacity: legendIn,
+        }}
+      >
+        <div>
+          <span style={{ color: INK }}>PULLED</span> — new faces. People who
+          hadn&apos;t watched any Waterhouse stream in the past 30 days. You
+          brought them.
+        </div>
+        <div>
+          <span style={{ color: INK }}>HOLD</span> — who stuck around. The share
+          of your viewers who stayed for a real stretch of the set, not just a
+          drop-in.
+        </div>
+      </div>
+
       <div
         style={{
           flex: 1,
@@ -433,7 +470,7 @@ const TheBoard: React.FC<Pick<HouseWeeklyProps, "rows">> = ({ rows }) => {
               key={`${row.artistName}-${i}`}
               row={row}
               rank={i + 1}
-              delay={i * stagger}
+              delay={BOARD_LEAD_IN + i * stagger}
               rowHeight={rowHeight}
             />
           ))}
