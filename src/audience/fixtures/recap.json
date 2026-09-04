@@ -1,0 +1,397 @@
+{
+  "artistName": "Tj Gee",
+  "artistImage": "https://cdn.waterhousestudios.nl/artists/ee46b403-8e78-4591-bbaa-eb1cdc599491/1788526895394.jpg",
+  "sessions": [
+    {
+      "start": "2026-04-23T16:44:00Z",
+      "end": "2026-04-23T18:59:30Z",
+      "durationMin": 135,
+      "slotLabel": "Thu 7pm",
+      "dateLabel": "Apr 23",
+      "peak": 7,
+      "uniques": 11,
+      "crowd": 3,
+      "pulled": 3,
+      "returning": 0,
+      "regulars": 8,
+      "holdRate": 0.55,
+      "follows": 1,
+      "chat": null,
+      "quadrant": "packed-held",
+      "shared": true,
+      "viewers": [
+        {
+          "initials": "SI",
+          "kind": "regular",
+          "arrivedMin": 0,
+          "leftMin": 135.5,
+          "watchMin": 135.5,
+          "stayed": true
+        },
+        {
+          "initials": "LM",
+          "kind": "regular",
+          "arrivedMin": 2.5,
+          "leftMin": 135.5,
+          "watchMin": 133,
+          "stayed": true
+        },
+        {
+          "initials": "MA",
+          "kind": "regular",
+          "arrivedMin": 2.5,
+          "leftMin": 4,
+          "watchMin": 1.5,
+          "stayed": false
+        },
+        {
+          "initials": "MU",
+          "kind": "pulled",
+          "arrivedMin": 14.5,
+          "leftMin": 25,
+          "watchMin": 10.5,
+          "stayed": false
+        },
+        {
+          "initials": "NM",
+          "kind": "regular",
+          "arrivedMin": 19.5,
+          "leftMin": 40.5,
+          "watchMin": 19,
+          "stayed": false
+        },
+        {
+          "initials": "DE",
+          "kind": "regular",
+          "arrivedMin": 32.5,
+          "leftMin": 135.5,
+          "watchMin": 93.5,
+          "stayed": true
+        },
+        {
+          "initials": "KO",
+          "kind": "regular",
+          "arrivedMin": 37.5,
+          "leftMin": 88.5,
+          "watchMin": 40.5,
+          "stayed": true
+        },
+        {
+          "initials": "JO",
+          "kind": "regular",
+          "arrivedMin": 51,
+          "leftMin": 135,
+          "watchMin": 70,
+          "stayed": true
+        },
+        {
+          "initials": "TA",
+          "kind": "pulled",
+          "arrivedMin": 51,
+          "leftMin": 52,
+          "watchMin": 1,
+          "stayed": false
+        },
+        {
+          "initials": "UN",
+          "kind": "pulled",
+          "arrivedMin": 89,
+          "leftMin": 135.5,
+          "watchMin": 46.5,
+          "stayed": true
+        },
+        {
+          "initials": "MO",
+          "kind": "regular",
+          "arrivedMin": 122,
+          "leftMin": 123,
+          "watchMin": 1,
+          "stayed": false
+        }
+      ]
+    },
+    {
+      "start": "2026-07-09T16:46:30Z",
+      "end": "2026-07-09T20:06:00Z",
+      "durationMin": 199,
+      "slotLabel": "Thu 7pm",
+      "dateLabel": "Jul 9",
+      "peak": 6,
+      "uniques": 9,
+      "crowd": 3,
+      "pulled": 3,
+      "returning": 0,
+      "regulars": 6,
+      "holdRate": 0.33,
+      "follows": 1,
+      "chat": null,
+      "quadrant": "hype-cliff",
+      "shared": false,
+      "viewers": [
+        {
+          "initials": "SI",
+          "kind": "regular",
+          "arrivedMin": 0,
+          "leftMin": 199.5,
+          "watchMin": 199.5,
+          "stayed": true
+        },
+        {
+          "initials": "ST",
+          "kind": "pulled",
+          "arrivedMin": 2.5,
+          "leftMin": 68,
+          "watchMin": 65.5,
+          "stayed": true
+        },
+        {
+          "initials": "LM",
+          "kind": "regular",
+          "arrivedMin": 4,
+          "leftMin": 198.5,
+          "watchMin": 194.5,
+          "stayed": true
+        },
+        {
+          "initials": "DE",
+          "kind": "regular",
+          "arrivedMin": 4,
+          "leftMin": 5.5,
+          "watchMin": 1.5,
+          "stayed": false
+        },
+        {
+          "initials": "IS",
+          "kind": "pulled",
+          "arrivedMin": 23,
+          "leftMin": 40.5,
+          "watchMin": 17.5,
+          "stayed": false
+        },
+        {
+          "initials": "MI",
+          "kind": "regular",
+          "arrivedMin": 37.5,
+          "leftMin": 71.5,
+          "watchMin": 16.5,
+          "stayed": false
+        },
+        {
+          "initials": "KO",
+          "kind": "regular",
+          "arrivedMin": 114.5,
+          "leftMin": 152,
+          "watchMin": 8,
+          "stayed": false
+        },
+        {
+          "initials": "LI",
+          "kind": "pulled",
+          "arrivedMin": 189,
+          "leftMin": 199.5,
+          "watchMin": 10.5,
+          "stayed": false
+        },
+        {
+          "initials": "IK",
+          "kind": "regular",
+          "arrivedMin": 191,
+          "leftMin": 196.5,
+          "watchMin": 5.5,
+          "stayed": false
+        }
+      ]
+    },
+    {
+      "start": "2026-08-20T16:54:00Z",
+      "end": "2026-08-20T21:05:00Z",
+      "durationMin": 251,
+      "slotLabel": "Thu 7pm",
+      "dateLabel": "Aug 20",
+      "peak": 6,
+      "uniques": 9,
+      "crowd": 2,
+      "pulled": 2,
+      "returning": 0,
+      "regulars": 7,
+      "holdRate": 0.44,
+      "follows": 0,
+      "chat": null,
+      "quadrant": "quiet",
+      "shared": false,
+      "viewers": [
+        {
+          "initials": "SI",
+          "kind": "regular",
+          "arrivedMin": 0,
+          "leftMin": 251,
+          "watchMin": 251,
+          "stayed": true
+        },
+        {
+          "initials": "TD",
+          "kind": "regular",
+          "arrivedMin": 3.5,
+          "leftMin": 141.5,
+          "watchMin": 49,
+          "stayed": true
+        },
+        {
+          "initials": "KO",
+          "kind": "regular",
+          "arrivedMin": 14,
+          "leftMin": 132.5,
+          "watchMin": 45.5,
+          "stayed": true
+        },
+        {
+          "initials": "MA",
+          "kind": "regular",
+          "arrivedMin": 20.5,
+          "leftMin": 132.5,
+          "watchMin": 112,
+          "stayed": true
+        },
+        {
+          "initials": "MU",
+          "kind": "regular",
+          "arrivedMin": 26.5,
+          "leftMin": 27.5,
+          "watchMin": 1,
+          "stayed": false
+        },
+        {
+          "initials": "DE",
+          "kind": "regular",
+          "arrivedMin": 28,
+          "leftMin": 35,
+          "watchMin": 7,
+          "stayed": false
+        },
+        {
+          "initials": "AL",
+          "kind": "pulled",
+          "arrivedMin": 88.5,
+          "leftMin": 94.5,
+          "watchMin": 6,
+          "stayed": false
+        },
+        {
+          "initials": "JU",
+          "kind": "pulled",
+          "arrivedMin": 219,
+          "leftMin": 220,
+          "watchMin": 1,
+          "stayed": false
+        },
+        {
+          "initials": "MI",
+          "kind": "regular",
+          "arrivedMin": 231,
+          "leftMin": 243.5,
+          "watchMin": 12.5,
+          "stayed": false
+        }
+      ]
+    },
+    {
+      "start": "2026-09-03T16:57:30Z",
+      "end": "2026-09-03T19:31:00Z",
+      "durationMin": 153,
+      "slotLabel": "Thu 7pm",
+      "dateLabel": "Sep 3",
+      "peak": 9,
+      "uniques": 9,
+      "crowd": 4,
+      "pulled": 3,
+      "returning": 1,
+      "regulars": 5,
+      "holdRate": 0.89,
+      "follows": 1,
+      "chat": null,
+      "quadrant": "packed-held",
+      "shared": false,
+      "viewers": [
+        {
+          "initials": "SI",
+          "kind": "regular",
+          "arrivedMin": 0,
+          "leftMin": 153.5,
+          "watchMin": 153.5,
+          "stayed": true
+        },
+        {
+          "initials": "LE",
+          "kind": "regular",
+          "arrivedMin": 3.5,
+          "leftMin": 153.5,
+          "watchMin": 150,
+          "stayed": true
+        },
+        {
+          "initials": "LM",
+          "kind": "regular",
+          "arrivedMin": 5,
+          "leftMin": 114,
+          "watchMin": 109,
+          "stayed": true
+        },
+        {
+          "initials": "AR",
+          "kind": "pulled",
+          "arrivedMin": 15.5,
+          "leftMin": 95,
+          "watchMin": 57,
+          "stayed": true
+        },
+        {
+          "initials": "DE",
+          "kind": "pulled",
+          "arrivedMin": 35,
+          "leftMin": 153.5,
+          "watchMin": 118.5,
+          "stayed": true
+        },
+        {
+          "initials": "KO",
+          "kind": "regular",
+          "arrivedMin": 49,
+          "leftMin": 68.5,
+          "watchMin": 9.5,
+          "stayed": false
+        },
+        {
+          "initials": "MU",
+          "kind": "pulled",
+          "arrivedMin": 65,
+          "leftMin": 148,
+          "watchMin": 45.5,
+          "stayed": true
+        },
+        {
+          "initials": "EL",
+          "kind": "regular",
+          "arrivedMin": 67,
+          "leftMin": 153,
+          "watchMin": 73,
+          "stayed": true
+        },
+        {
+          "initials": "IS",
+          "kind": "returning",
+          "arrivedMin": 79.5,
+          "leftMin": 153.5,
+          "watchMin": 74,
+          "stayed": true
+        }
+      ]
+    }
+  ],
+  "bestUniques": 11,
+  "bestCrowd": 4,
+  "nextSlot": {
+    "dayLabel": "Thu",
+    "time": "7pm",
+    "dateLabel": "Nov 5"
+  }
+}

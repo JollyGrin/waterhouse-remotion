@@ -3,6 +3,12 @@
 Everything in this folder is license-free for commercial use with no
 attribution obligation. Credits are recorded here anyway.
 
+> The "Who Showed Up" recap videos share a separate, quieter kit built the
+> same way and from the same Kenney sources — see
+> [`../recap/CREDITS.md`](../recap/CREDITS.md) and
+> [`../recap/README.md`](../recap/README.md). It reads the `kenney/` files in
+> this folder rather than keeping a second copy, so do not move them.
+
 Rebuild with `bun run gen:audio`. Re-download the Kenney sources with
 `bun run fetch:kenney` (only needed to change which sounds are picked — the
 selected sources are committed under `kenney/`).
