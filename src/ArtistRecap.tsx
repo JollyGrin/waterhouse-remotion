@@ -493,17 +493,11 @@ const WhoShowedUp: React.FC<{ session: SessionAudience }> = ({ session }) => {
     dot,
     { text: `held ${pct(session.holdRate)}%`, color: INK_2 },
   ];
-  // Spoke only exists for shows after chat capture shipped. No zero, no dash -
-  // the part is simply not there.
-  const line2: Chunk[] = [
-    {
-      text: `${session.follows} follow${session.follows === 1 ? "" : "s"}`,
-      color: INK_2,
-    },
-    ...(session.chat
-      ? [dot, { text: `${session.chat.chatters} spoke`, color: INK_2 }]
-      : []),
-  ];
+  // Chat is out of the videos until there is data to show. The nullable `chat`
+  // field stays in the schema, but no beat reads it. Follows keeps its line
+  // even at zero, phrased label-first so it reads the same as the trend beat's
+  // "Follows 0 -> 1".
+  const line2: Chunk[] = [{ text: `follows ${session.follows}`, color: INK_2 }];
   const len = (cs: Chunk[]) => cs.reduce((n, c) => n + c.text.length, 0);
   const total = len(line1) + len(line2);
   // The crowd line runs to ~43 characters; shrink rather than wrap it.
