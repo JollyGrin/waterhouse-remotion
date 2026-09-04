@@ -437,15 +437,15 @@ const GLOSSARY_WIDTH = 630;
 const GLOSSARY: { term: string; text: string }[] = [
   {
     term: "PULLED",
-    text: " \u2014 new faces. People who hadn't watched any Waterhouse stream in the past 30 days. You brought them.",
+    text: " \u2014 new faces. Hadn't watched any Waterhouse stream in the past 30 days. You brought them.",
   },
   {
     term: "YOURS",
-    text: " \u2014 your crowd. New faces plus the people who mainly come to Waterhouse for you.",
+    text: " \u2014 people who came for you: new faces plus your own regulars. House regulars who watch every show are not counted.",
   },
   {
     term: "HOLD",
-    text: " \u2014 who stuck around. The share of your viewers who stayed for a real stretch of the set, not just a drop-in.",
+    text: " \u2014 share of everyone watching who stuck around, not just a drop-in.",
   },
 ];
 
@@ -722,9 +722,9 @@ const WhoShowedUp: React.FC<{ session: SessionAudience }> = ({ session }) => {
           >
             {(
               [
-                ["Pulled (new)", ACCENT],
-                ["Returning (yours)", INK],
-                ["Regular", GREY],
+                ["New faces", ACCENT],
+                ["Your regulars", INK],
+                ["House regulars", GREY],
               ] as const
             ).map(([label, color]) => (
               <span
@@ -888,11 +888,28 @@ const Trend: React.FC<{
         }}
       />
 
+      {/* Names the two-tone bar, so the faint one is never mistaken for a
+          number the artist is being judged on. */}
       <div
         style={{
           position: "absolute",
           left: PAD,
-          top: 1400,
+          top: 1345,
+          width: CONTENT_W,
+          fontFamily: monoFont,
+          fontSize: 22,
+          color: GREY,
+          opacity: fadeIn(frame, BAR_IN + 6, 14),
+        }}
+      >
+        pink/white = your crowd · faint = everyone watching
+      </div>
+
+      <div
+        style={{
+          position: "absolute",
+          left: PAD,
+          top: 1450,
           width: CONTENT_W,
         }}
       >
