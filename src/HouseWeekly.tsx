@@ -99,13 +99,10 @@ const fadeUp = (frame: number, delay: number, distance = 28) => {
 
 const pct = (holdRate: number) => `${Math.round(holdRate * 100)}%`;
 
-// Spoke is the one substat that can be missing: chat capture only exists from
-// the day it shipped, and Twitch keeps no history before it.
-const spoke = (row: BoardRow) =>
-  row.chat ? `${row.chat.chatters}/${row.uniques}` : "—";
-
+// `chat` stays on BoardRow - the data script still emits it - but nothing on
+// screen reads it until there is chat data worth showing.
 const substatLine = (row: BoardRow) =>
-  `pulled ${row.pulled} · hold ${pct(row.holdRate)} · peak ${row.peak} · follows ${row.follows} · spoke ${spoke(row)}`;
+  `pulled ${row.pulled} · hold ${pct(row.holdRate)} · peak ${row.peak} · follows ${row.follows}`;
 
 // --- Frame chrome: eyebrow at the top, watermark at the foot ---
 const Frame: React.FC<{
@@ -302,7 +299,6 @@ const GLOSSARY: { term: string; rest: string }[] = [
     rest: " — most people watching at once, everyone included: your crowd plus house regulars.",
   },
   { term: "FOLLOWS", rest: " — new follows during your set." },
-  { term: "SPOKE", rest: " — how many people chatted, out of everyone there." },
 ];
 
 const BoardRowLine: React.FC<{
@@ -432,7 +428,7 @@ const TheBoard: React.FC<Pick<HouseWeeklyProps, "rows">> = ({ rows }) => {
 
   // Two-line rows, so the height per row is roughly double what a flat board
   // needed. Seven of them still clear the footnote.
-  const rowHeight = Math.min(180, Math.floor(1120 / Math.max(1, shown.length)));
+  const rowHeight = Math.min(180, Math.floor(1150 / Math.max(1, shown.length)));
 
   const glossaryIn = interpolate(frame, [0, 12], [0, 1], {
     extrapolateLeft: "clamp",
@@ -575,13 +571,13 @@ const TheBoard: React.FC<Pick<HouseWeeklyProps, "rows">> = ({ rows }) => {
 
 // --- Beat 3 (330-480): badges ---
 //
-// One badge per substat, so every behaviour the house wants to see has a
-// weekly winner and most artists take something home.
+// One badge per substat on the board, so every behaviour the house wants to
+// see has a weekly winner and most artists take something home. Loudest room
+// waits for chat data.
 const BADGE_LABELS: { key: Badge; label: string }[] = [
   { key: "most-pulled", label: "Most pulled" },
   { key: "held-the-room", label: "Held the room" },
   { key: "most-follows", label: "Most follows" },
-  { key: "loudest-room", label: "Loudest room" },
   { key: "best-comeback", label: "Best comeback" },
 ];
 
