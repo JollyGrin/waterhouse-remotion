@@ -1,10 +1,12 @@
 import React from "react";
 import {
   AbsoluteFill,
+  Audio,
   Easing,
   Sequence,
   interpolate,
   spring,
+  staticFile,
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
@@ -66,6 +68,25 @@ const NEXT_LENGTH = 150; // 600-750 next week
 export const BOARD_ROW_CAP = 7;
 const BOARD_LEAD_IN = 14;
 const BOARD_ROW_STAGGER = 30;
+
+// Beat 1's four count-ups, [start, end] within the beat. The audio reads the
+// end of each one, so a land can never drift off the number it belongs to.
+const WEEK_COUNTS: [number, number][] = [
+  [6, 36], // shows
+  [24, 56], // people in the room
+  [42, 72], // new to the house
+  [58, 86], // new follows
+];
+
+const BADGE_IN = 10;
+const BADGE_STAGGER = 18;
+
+// The house line's dot and value arrive together.
+const HOUSE_DOT_IN = 76;
+
+const NEXT_IN = 10;
+const nextWeekStagger = (rowCount: number) =>
+  Math.min(18, Math.floor(90 / Math.max(1, rowCount)));
 
 // --- Small helpers ---
 
@@ -197,7 +218,7 @@ const TheWeek: React.FC<
               color: INK,
             }}
           >
-            {countUp(frame, 6, 36, shows)}
+            {countUp(frame, ...WEEK_COUNTS[0], shows)}
           </div>
           <div
             style={{
@@ -233,7 +254,7 @@ const TheWeek: React.FC<
               color: INK,
             }}
           >
-            {countUp(frame, 24, 56, uniques)}
+            {countUp(frame, ...WEEK_COUNTS[1], uniques)}
           </div>
           <div
             style={{
@@ -256,7 +277,7 @@ const TheWeek: React.FC<
               color: ACCENT,
             }}
           >
-            {countUp(frame, 42, 72, pulled)} new to the house
+            {countUp(frame, ...WEEK_COUNTS[2], pulled)} new to the house
           </div>
         </div>
 
@@ -269,7 +290,7 @@ const TheWeek: React.FC<
               color: INK_2,
             }}
           >
-            {countUp(frame, 58, 86, follows)} new follows
+            {countUp(frame, ...WEEK_COUNTS[3], follows)} new follows
           </div>
         </div>
       </div>
@@ -660,7 +681,7 @@ const Badges: React.FC<Pick<HouseWeeklyProps, "rows">> = ({ rows }) => {
             key={badge.key}
             label={badge.label}
             value={badgeWinner(rows, badge.key)}
-            delay={10 + i * 18}
+            delay={BADGE_IN + i * BADGE_STAGGER}
           />
         ))}
       </div>
@@ -697,7 +718,7 @@ const HouseLine: React.FC<Pick<HouseWeeklyProps, "houseSeries">> = ({
     extrapolateRight: "clamp",
     easing: Easing.inOut(Easing.cubic),
   });
-  const dotIn = interpolate(frame, [76, 92], [0, 1], {
+  const dotIn = interpolate(frame, [HOUSE_DOT_IN, HOUSE_DOT_IN + 16], [0, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
     easing: Easing.out(Easing.cubic),
@@ -805,7 +826,7 @@ const NextWeek: React.FC<Pick<HouseWeeklyProps, "nextWeek">> = ({
   nextWeek,
 }) => {
   const frame = useCurrentFrame();
-  const stagger = Math.min(18, Math.floor(90 / Math.max(1, nextWeek.length)));
+  const stagger = nextWeekStagger(nextWeek.length);
 
   return (
     <Frame label="Next week" left="Waterhouse" right="Link in bio">
@@ -843,7 +864,7 @@ const NextWeek: React.FC<Pick<HouseWeeklyProps, "nextWeek">> = ({
               fontSize: 128,
               lineHeight: 0.9,
               color: INK,
-              ...fadeUp(frame, 10),
+              ...fadeUp(frame, NEXT_IN),
             }}
           >
             Next week&apos;s lineup drops soon.
@@ -859,7 +880,7 @@ const NextWeek: React.FC<Pick<HouseWeeklyProps, "nextWeek">> = ({
                 gap: 24,
                 padding: "26px 0",
                 borderBottom: `1px solid ${LINE}`,
-                ...fadeUp(frame, 10 + i * stagger),
+                ...fadeUp(frame, NEXT_IN + i * stagger),
               }}
             >
               <span
@@ -914,6 +935,113 @@ const NextWeek: React.FC<Pick<HouseWeeklyProps, "nextWeek">> = ({
   );
 };
 
+// --- Sound ---
+//
+// The shared recap kit, same eight files ArtistRecap uses so the two clips
+// sound like one series. Everything here reads the timing constants above,
+// so a cue cannot drift off the thing it is marking.
+//
+// Levels follow the kit's plan: one-shots at 0.7, the bed flat at 1.0 and
+// already sitting ~24 dB under them. The bed's own tail is at 26 s and this
+// clip stops at 25, so the fade to silence has to happen here.
+const sfx = (name: string) => staticFile(`audio/recap/${name}.wav`);
+
+const ONE_SHOT = 0.7;
+const BED_FADE = 45; // 1.5s, matching the bed's own built-in tail
+
+// The kit asks for the whoosh to start a touch before the cut so its tail
+// lands on the new beat rather than trailing off it.
+const WHOOSH_LEAD = 4;
+
+const Cue: React.FC<{
+  at: number;
+  file: string;
+  frames: number;
+  volume?: number;
+}> = ({ at, file, frames, volume = ONE_SHOT }) => (
+  <Sequence from={at} durationInFrames={frames}>
+    <Audio src={sfx(file)} volume={volume} />
+  </Sequence>
+);
+
+const Whoosh: React.FC<{ beatStart: number }> = ({ beatStart }) => (
+  <Cue at={beatStart - WHOOSH_LEAD} file="whoosh" frames={10} />
+);
+
+const HouseWeeklyAudio: React.FC<
+  Pick<HouseWeeklyProps, "rows" | "nextWeek">
+> = ({ rows, nextWeek }) => {
+  const boardRows = rows.slice(0, BOARD_ROW_CAP).length;
+  const lineupStagger = nextWeekStagger(nextWeek.length);
+
+  return (
+    <>
+      {/* Room tone under everything, trimmed to the clip and taken to
+          silence over the last 45 frames so the final frame is clean. */}
+      <Sequence durationInFrames={HOUSEWEEKLY_DURATION}>
+        <Audio
+          src={sfx("bed")}
+          volume={(f) =>
+            interpolate(
+              f,
+              [HOUSEWEEKLY_DURATION - BED_FADE, HOUSEWEEKLY_DURATION - 1],
+              [1, 0],
+              { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+            )
+          }
+        />
+      </Sequence>
+
+      {/* Beat 1: one settle per number as its count-up stops. */}
+      {WEEK_COUNTS.map(([, end], i) => (
+        <Cue key={`count-${i}`} at={WEEK_START + end} file="land" frames={8} />
+      ))}
+
+      {/* Beat 2: the cut, the glossary appearing, then a row at a time. */}
+      <Whoosh beatStart={BOARD_START} />
+      {/* Late enough in the glossary fade that the whoosh has decayed out
+          from under it - at +4 the tick was inaudible beneath the tail. */}
+      <Cue at={BOARD_START + 8} file="tick" frames={2} volume={0.5} />
+      {Array.from({ length: boardRows }).map((_, i) => (
+        <Cue
+          key={`row-${i}`}
+          at={BOARD_START + BOARD_LEAD_IN + i * BOARD_ROW_STAGGER}
+          file="pop"
+          frames={4}
+        />
+      ))}
+
+      {/* Beat 3: a chime per badge somebody actually won. */}
+      <Whoosh beatStart={BADGES_START} />
+      {BADGE_LABELS.map((badge, i) =>
+        badgeWinner(rows, badge.key) === "—" ? null : (
+          <Cue
+            key={`badge-${badge.key}`}
+            at={BADGES_START + BADGE_IN + i * BADGE_STAGGER}
+            file="chime"
+            frames={10}
+          />
+        ),
+      )}
+
+      {/* Beat 4: the line reaches the end and the number pops. */}
+      <Whoosh beatStart={HOUSE_START} />
+      <Cue at={HOUSE_START + HOUSE_DOT_IN} file="land" frames={8} />
+
+      {/* Beat 5: a row at a time, then nothing but the bed going out. */}
+      <Whoosh beatStart={NEXT_START} />
+      {nextWeek.map((slot, i) => (
+        <Cue
+          key={`slot-${slot.dayLabel}-${slot.time}-${i}`}
+          at={NEXT_START + NEXT_IN + i * lineupStagger}
+          file="pop"
+          frames={4}
+        />
+      ))}
+    </>
+  );
+};
+
 // --- Main composition ---
 export const HouseWeekly: React.FC<HouseWeeklyProps> = ({
   weekLabel,
@@ -928,6 +1056,8 @@ export const HouseWeekly: React.FC<HouseWeeklyProps> = ({
 }) => {
   return (
     <AbsoluteFill style={{ backgroundColor: BG }}>
+      <HouseWeeklyAudio rows={rows} nextWeek={nextWeek} />
+
       <Sequence from={WEEK_START} durationInFrames={WEEK_LENGTH}>
         <TheWeek
           rangeLabel={rangeLabel}
