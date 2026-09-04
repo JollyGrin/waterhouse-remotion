@@ -71,6 +71,19 @@ const defaultPullUpChat = [
   { name: "sef", text: "what is this??" },
 ];
 
+// A shared booking: one clip for the night, both artists on the bill. Real
+// props from `bun run render:pullup`.
+const sharedPullUpPerformers = [
+  { name: "Elemzene", image: "https://i.imgur.com/awQ1ZOR.png" },
+  { name: "L4C4", image: "https://i.imgur.com/W9s7uwJ.jpeg" },
+];
+
+const sharedPullUpChat = [
+  { name: "you", text: "let's go Beatshopping!" },
+  { name: "nadi", text: "shazam is useless here" },
+  { name: "sef", text: "tuned in from work" },
+];
+
 const fallbackPullUpChat = [
   { name: "you", text: "let's go The Silintist!" },
   { name: "mira", text: "heyy \u{1F44B}" },
@@ -181,6 +194,29 @@ export const RemotionRoot: React.FC = () => {
         width={1080}
         height={1920}
         defaultProps={houseWeeklyPropsSchema.parse(weeklyFallbackFixture)}
+      />
+      {/* A shared booking: the event leads, both artists share the window. */}
+      <Composition
+        id="PullUpShared"
+        component={PullUp}
+        schema={PullUpSchema}
+        durationInFrames={PULLUP_DURATION}
+        fps={30}
+        width={1080}
+        height={1920}
+        defaultProps={{
+          artistName: "Beatshopping",
+          artistImage: null,
+          genre: null,
+          eventDay: "Fri",
+          eventTime: "19:00",
+          eventDate: "Fri 11 Sep",
+          avatars: defaultPullUpAvatars,
+          chatLines: sharedPullUpChat,
+          performers: sharedPullUpPerformers,
+          seed: 2,
+          bedVariant: "b" as const,
+        }}
       />
       {/* Second demo artist - no photo, no genre: exercises the fallbacks. */}
       <Composition

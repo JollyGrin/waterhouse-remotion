@@ -1,7 +1,11 @@
 #!/usr/bin/env bun
 /**
- * Render one looping "PullUp" clip per artist per event, from the Waterhouse
- * Studios calendar API. Artists forward these to friends before their show.
+ * Render one looping "PullUp" clip per event from the Waterhouse Studios
+ * calendar API. Artists forward these to friends before their show.
+ *
+ * A solo booking gets a clip named after the artist. A shared booking - two
+ * or more artists on the same reservation - gets ONE clip named after the
+ * event, with everybody on the bill in the player frame.
  *
  * Usage:
  *   bun scripts/render-pullup.ts          # interactive picker (next 5 events)
@@ -12,25 +16,30 @@
  * Enter for the public endpoint without auth. `--all` never prompts: it uses
  * $WATERHOUSE_TOKEN if set, otherwise no auth.
  *
- * Output: out/PullUp-{artist-slug}-{YYYY-MM-DD}.mp4
+ * Output: out/PullUp-{artist-or-event-slug}-{YYYY-MM-DD}.mp4
  */
 
-import { execSync } from "child_process";
 import { writeFileSync } from "fs";
-import { PULLUP_DURATION } from "../src/PullUp";
+import { PHOTO_FAILED_MARKER, PULLUP_DURATION } from "../src/PullUp";
+import {
+  hashSeed,
+  initials,
+  jobFeaturedIds,
+  jobName,
+  jobSeedSource,
+  jobSlug,
+  makeRng,
+  pickDistinct,
+  planJobs,
+  uniqueStems,
+  type PullUpArtist,
+  type PullUpJob,
+} from "../src/pullup/plan";
 
 const API_BASE = "https://api.waterhousestudios.nl/api";
 
 // --- Types matching the API response ---
-interface Artist {
-  id: string;
-  stage_name: string;
-  bio: string | null;
-  genre: string | null;
-  website: string | null;
-  social_media: string | null;
-  profile_image_url: string | null;
-}
+type Artist = PullUpArtist;
 
 interface Reservation {
   id: string;
@@ -75,37 +84,6 @@ const CHAT_NAMES = [
   "flo",
 ];
 
-// --- Deterministic seeded RNG (mulberry32) ---
-function makeRng(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function pickDistinct<T>(pool: T[], count: number, rng: () => number): T[] {
-  const remaining = pool.slice();
-  const out: T[] = [];
-  while (out.length < count && remaining.length > 0) {
-    const i = Math.floor(rng() * remaining.length);
-    out.push(remaining.splice(i, 1)[0]);
-  }
-  return out;
-}
-
-function hashSeed(input: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < input.length; i++) {
-    h ^= input.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-
 // --- Token extraction (same behaviour as render-weekly.ts) ---
 function extractBearerToken(input: string): string | null {
   if (!input.includes(" ") && input.includes(".")) {
@@ -146,33 +124,20 @@ function formatTime(dateStr: string): string {
   return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
+// `HHMM` in local time, used only to tell two same-titled bookings on one
+// day apart in the filename.
+function isoTime(dateStr: string): string {
+  const d = new Date(dateStr);
+  const h = `${d.getHours()}`.padStart(2, "0");
+  const m = `${d.getMinutes()}`.padStart(2, "0");
+  return `${h}${m}`;
+}
+
 function isoDay(dateStr: string): string {
   const d = new Date(dateStr);
   const m = `${d.getMonth() + 1}`;
   const day = `${d.getDate()}`;
   return `${d.getFullYear()}-${m.length < 2 ? `0${m}` : m}-${day.length < 2 ? `0${day}` : day}`;
-}
-
-function slugify(name: string): string {
-  return (
-    name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "artist"
-  );
-}
-
-function initials(name: string): string {
-  // Strip punctuation first - stage names like "(N)ARZ" would otherwise
-  // yield "(N" as their avatar label.
-  const parts = name
-    .replace(/[^A-Za-z0-9\s]/g, "")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  if (parts.length === 0) return "??";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[1][0]).toUpperCase();
 }
 
 // --- API fetch ---
@@ -190,9 +155,18 @@ async function fetchReservations(token: string | null): Promise<Reservation[]> {
   return data.reservations;
 }
 
-// Roster rows carry stale profile URLs (dead SoundCloud CDN links, 404s).
-// Remotion's <Img> retries a failing image on every frame, so weed them out
-// once up front and let the composition fall back to initials.
+// Roster rows carry stale profile URLs (dead SoundCloud CDN links, 404s), so
+// weed them out once up front and let the composition fall back to initials.
+// Headers only: some of these point at 50MB background gifs, and every
+// roster photo goes through here on an --all run.
+//
+// This is a cheap first pass, not a guarantee: a host can answer Bun and
+// still refuse Chromium (imgproxy.ra.co behind Cloudflare does exactly that),
+// which is why <SafeImg> in src/PullUp.tsx catches the rest at render time.
+//
+// Nothing here looks *inside* an image. How a photo hangs in the stream
+// window is decided by the composition from the shape the browser reports as
+// it loads - see src/pullup/framing.ts.
 const imageCache = new Map<string, boolean>();
 
 async function imageLoads(url: string | null): Promise<boolean> {
@@ -209,6 +183,8 @@ async function imageLoads(url: string | null): Promise<boolean> {
     });
     ok =
       res.ok && (res.headers.get("content-type") || "").indexOf("image") === 0;
+    // Nothing reads res.body, so the download is cancelled here.
+    await res.body?.cancel();
   } catch {
     ok = false;
   }
@@ -219,13 +195,19 @@ async function imageLoads(url: string | null): Promise<boolean> {
   return ok;
 }
 
+/** The photo to use, or null if it is not worth handing to the render. */
+async function photo(url: string | null): Promise<string | null> {
+  return (await imageLoads(url)) ? url : null;
+}
+
 // --- Build the "room" from the rest of the roster ---
 async function buildAvatars(
   roster: Artist[],
-  featuredId: string,
+  featuredIds: string[],
   rng: () => number,
 ): Promise<Array<{ label: string; image: string | null }>> {
-  const others = roster.filter((a) => a.id !== featuredId);
+  const featured = new Set(featuredIds);
+  const others = roster.filter((a) => !featured.has(a.id));
   const chosen = pickDistinct(others, 6, rng);
 
   const avatars: Array<{ label: string; image: string | null }> = [];
@@ -255,44 +237,118 @@ async function buildAvatars(
 // the composition styles the "you" line with the accent colour to match the
 // leading YOU avatar. The other two are seeded picks from the pool.
 function buildChatLines(
-  artistName: string,
+  headliner: string,
   rng: () => number,
 ): Array<{ name: string; text: string }> {
   const names = pickDistinct(CHAT_NAMES, 2, rng);
   const texts = pickDistinct(CHAT_POOL, 2, rng);
   return [
-    { name: "you", text: `let's go ${artistName}!` },
+    { name: "you", text: `let's go ${headliner}!` },
     { name: names[0], text: texts[0] },
     { name: names[1], text: texts[1] },
   ];
 }
 
+/**
+ * Runs the render, streaming its output through so progress still shows,
+ * and hands back everything it printed so the caller can look for photos
+ * that failed inside Chromium.
+ */
+async function runRender(cmd: string[]): Promise<string> {
+  const child = Bun.spawn(cmd, {
+    cwd: process.cwd(),
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  let captured = "";
+  const tee = async (
+    stream: ReadableStream<Uint8Array>,
+    out: NodeJS.WriteStream,
+  ) => {
+    const reader = stream.getReader();
+    const decoder = new TextDecoder();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const text = decoder.decode(value, { stream: true });
+      captured += text;
+      out.write(text);
+    }
+  };
+
+  await Promise.all([
+    tee(child.stdout, process.stdout),
+    tee(child.stderr, process.stderr),
+  ]);
+  const code = await child.exited;
+  if (code !== 0) {
+    throw new Error(`remotion render exited with ${code}`);
+  }
+  return captured;
+}
+
+/**
+ * Photos that loaded in the preflight and then failed inside Chromium.
+ * <SafeImg> prints one line per failing src; Remotion forwards it with a
+ * `[Tab 3, ...]` prefix, which is why this matches rather than parses.
+ */
+export function failedPhotosIn(output: string): string[] {
+  const pattern = new RegExp(`${PHOTO_FAILED_MARKER}\\s+(\\S+)`, "g");
+  return Array.from(new Set(Array.from(output.matchAll(pattern), (m) => m[1])));
+}
+
+export interface RenderedClip {
+  outPath: string;
+  /** Photos that loaded in the preflight and then failed inside Chromium. */
+  failedPhotos: string[];
+}
+
 // --- Render one clip ---
 async function renderClip(
-  event: Reservation,
-  artist: Artist,
+  job: PullUpJob,
+  stem: string,
   roster: Artist[],
-): Promise<string> {
-  const seedSource = `${event.id}:${artist.id}`;
-  const seed = hashSeed(seedSource);
+): Promise<RenderedClip> {
+  const event = job.event;
+  const seed = hashSeed(jobSeedSource(job));
   const rng = makeRng(seed);
 
+  // The headline name: the artist, or the night they share. The chat's "you"
+  // line follows it, so a shared clip reads "let's go Beatshopping!".
+  const name = jobName(job);
+
+  // Only shared bookings carry `performers`; a solo clip's props stay exactly
+  // the shape they have always been.
+  const performers =
+    job.kind === "shared"
+      ? await Promise.all(
+          job.artists.map(async (a) => ({
+            name: a.stage_name,
+            image: await photo(a.profile_image_url),
+          })),
+        )
+      : undefined;
+
+  const artistImage =
+    job.kind === "solo" ? await photo(job.artist.profile_image_url) : null;
+
   const props = {
-    artistName: artist.stage_name,
-    artistImage: (await imageLoads(artist.profile_image_url))
-      ? artist.profile_image_url
-      : null,
-    genre: artist.genre || artist.bio,
+    artistName: name,
+    artistImage,
+    genre: job.kind === "solo" ? job.artist.genre || job.artist.bio : null,
     eventDay: formatDay(event.start_time),
     eventTime: formatTime(event.start_time),
     eventDate: formatDate(event.start_time),
-    avatars: await buildAvatars(roster, artist.id, rng),
-    chatLines: buildChatLines(artist.stage_name, rng),
+    avatars: await buildAvatars(roster, jobFeaturedIds(job), rng),
+    chatLines: buildChatLines(name, rng),
+    ...(performers ? { performers } : {}),
     seed: seed % 4,
   };
 
-  const outPath = `out/PullUp-${slugify(artist.stage_name)}-${isoDay(event.start_time)}.mp4`;
-  const propsPath = `/tmp/waterhouse-pullup-${slugify(artist.stage_name)}-${isoDay(event.start_time)}.json`;
+  const outPath = `out/PullUp-${stem}.mp4`;
+  const propsPath = `/tmp/waterhouse-pullup-${stem}.json`;
   writeFileSync(propsPath, JSON.stringify(props, null, 2));
 
   const cmd = [
@@ -303,30 +359,13 @@ async function renderClip(
     "PullUp",
     outPath,
     `--props=${propsPath}`,
-  ].join(" ");
+  ];
 
-  console.log(`\n$ ${cmd}`);
-  execSync(cmd, {
-    stdio: ["ignore", "inherit", "inherit"],
-    cwd: process.cwd(),
-  });
-  return outPath;
-}
+  console.log(`\n$ ${cmd.join(" ")}`);
+  const output = await runRender(cmd);
 
-// A reservation with no linked artists still gets a clip, using the purpose
-// line as the name — same fallback WeeklyLineup uses.
-function syntheticArtist(event: Reservation): Artist {
-  const name =
-    event.purpose?.replace(/^(Radio|Reserved|Private):\s*/i, "") || "Event";
-  return {
-    id: `synthetic-${event.id}`,
-    stage_name: name,
-    bio: null,
-    genre: null,
-    website: null,
-    social_media: null,
-    profile_image_url: null,
-  };
+  // The clip still renders, with initials in place of a face.
+  return { outPath, failedPhotos: failedPhotosIn(output) };
 }
 
 // --- Main ---
@@ -442,33 +481,58 @@ async function main() {
     }
   }
 
-  // One clip per artist per event.
-  const jobs: Array<{ event: Reservation; artist: Artist }> = [];
-  for (const event of chosen) {
-    const artists =
-      event.artists.length > 0 ? event.artists : [syntheticArtist(event)];
-    for (const artist of artists) {
-      jobs.push({ event, artist });
-    }
-  }
+  // One clip per artist, except a shared booking, which is one per event.
+  const jobs = planJobs(chosen);
+
+  // Remotion overwrites without asking, so two bookings that would land on
+  // the same filename - same title, same day - get their start time added.
+  const stems = uniqueStems(
+    jobs.map((j) => ({
+      slug: jobSlug(j),
+      day: isoDay(j.event.start_time),
+      time: isoTime(j.event.start_time),
+    })),
+  );
 
   console.log(
     `\nRendering ${jobs.length} clip(s), ${PULLUP_DURATION} frames each (${(PULLUP_DURATION / 30).toFixed(1)}s):`,
   );
-  for (const j of jobs) {
+  jobs.forEach((j, i) => {
+    const bill =
+      j.kind === "shared"
+        ? ` (${j.artists.map((a) => a.stage_name).join(" + ")})`
+        : "";
     console.log(
-      `  ${formatDate(j.event.start_time)} ${formatTime(j.event.start_time)} - ${j.artist.stage_name}`,
+      `  ${formatDate(j.event.start_time)} ${formatTime(j.event.start_time)} - ${jobName(j)}${bill} -> PullUp-${stems[i]}.mp4`,
     );
-  }
+  });
 
-  const written: string[] = [];
-  for (const j of jobs) {
-    written.push(await renderClip(j.event, j.artist, roster));
+  const written: RenderedClip[] = [];
+  for (let i = 0; i < jobs.length; i++) {
+    written.push(await renderClip(jobs[i], stems[i], roster));
   }
 
   console.log(`\nDone! ${written.length} file(s):`);
   for (const w of written) {
-    console.log(`  ${w}`);
+    console.log(`  ${w.outPath}`);
+  }
+
+  // Loud on purpose: these clips look finished and are missing a face.
+  const withFallbacks = written.filter((w) => w.failedPhotos.length > 0);
+  if (withFallbacks.length > 0) {
+    console.log(
+      `\n!! ${withFallbacks.length} clip(s) show INITIALS where a photo should be.`,
+    );
+    console.log(
+      "   The photo loaded in the preflight but the render could not fetch it.",
+    );
+    for (const w of withFallbacks) {
+      console.log(`   ${w.outPath}`);
+      for (const src of w.failedPhotos) {
+        console.log(`     ${src}`);
+      }
+    }
+    console.log("   Fix the artist's profile image before forwarding these.");
   }
 }
 
@@ -506,7 +570,11 @@ function readLine(): Promise<string> {
   });
 }
 
-main().catch((err) => {
-  console.error("Error:", err);
-  process.exit(1);
-});
+// Only when run as the script, so a test can import from here without
+// kicking off a render. (`import.meta` is off limits under this tsconfig.)
+if (/render-pullup\.ts$/.test(process.argv[1] ?? "")) {
+  main().catch((err) => {
+    console.error("Error:", err);
+    process.exit(1);
+  });
+}

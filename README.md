@@ -19,7 +19,7 @@ tokens or `.env` for the recap videos: every API they read is public.
 |---|---|---|---|
 | **ArtistRecap** ("Who Showed Up") | An artist's last N shows: who came, who stayed, who was new, plus a target to beat next time | One artist, within a day of their show | `bun run render:recap "Tj Gee"` |
 | **HouseWeekly** | The week's board: every artist ranked by the crowd they brought, four badges, the 8-week house line, next week's lineup | The artist group chat, Monday morning | `bun run render:weekly-board --end 2026-09-03` |
-| **PullUp** | 10 s looping "I'm on tonight, pull up" clip per event | Artists forward it to friends before a show | `bun run render:pullup` |
+| **PullUp** | 10 s looping "I'm on tonight, pull up" clip per event. A shared booking - two or more artists on one reservation - gets a single clip led by the event title, with everyone on the bill in the stream window | Artists forward it to friends before a show | `bun run render:pullup` |
 | **WeeklyLineup** | This week's lineup as a story | Instagram story | `bun run render:weekly` |
 
 Output lands in `out/` (gitignored). A clip takes 1–2 minutes to render.
@@ -54,6 +54,50 @@ bun run render:pullup          # pick from the next 5 events
 bun run render:pullup --all    # every approved event in the next 7 days
 bun run render:weekly          # prompts for a bearer token; Enter = public endpoint
 ```
+
+PullUp writes `out/PullUp-{name}-{YYYY-MM-DD}.mp4`, one file per event:
+
+- **One artist** - named after the artist, their photo in the stream window.
+- **Two or more artists on the same reservation** - one file named after the
+  event (`out/PullUp-beatshopping-2026-09-11.mp4`), with the headline and the
+  chat leading with the night rather than one name. Two artists share the
+  window side by side; three or more become a row of chips. Everybody on the
+  bill is named.
+- **No artists linked** - the purpose line stands in, same as WeeklyLineup.
+
+The event title is the `purpose` with its `Radio:` / `Reserved:` / `Private:`
+prefix stripped; a shared booking with no usable purpose is named after its
+artists instead (`PullUp-elemzene-l4c4-...`). Two bookings that would write
+the same filename get their start time appended.
+
+Shared clips seed on the event id rather than on any one artist, so the
+accent colour, the audio variant, the chat lines and the "you" line come back
+the same on every re-render. The room avatars do **not**: they are picked
+from the roster minus whoever is on the bill, so they shift when the bill
+changes or the roster grows.
+
+**Photos.** How a photo hangs in the stream window follows one rule, from
+the shape of the photo itself (`src/pullup/framing.ts`):
+
+- **Portrait** (taller than it is wide) - shown whole and centred, over a
+  blurred, darkened copy of itself. A tight headshot cropped to the
+  landscape window loses the mouth, or the eyes, or both, so it is never
+  cropped.
+- **Landscape or square** - filled and centred, losing only the edges of a
+  photo that already suits the window.
+
+The same rule applies to each half of a two-artist bill. The round chips of
+a three-plus bill and the room avatars stay filled and centred: they are
+small circles, and the shape does not matter there.
+
+The composition measures each photo as the browser loads it, holding the
+frame open until it knows - no image decoding, no preflight, no extra
+dependency. The render script only checks that a URL answers with an image
+at all; anything that does not, or that loads for the preflight and is then
+refused by Remotion's Chromium, falls back to the artist's initials. That
+case is printed loudly at the end of the run, listing which clips went out
+with initials where a face should be; do not forward those before fixing the
+artist's profile image.
 
 ### Just the numbers
 
@@ -99,6 +143,8 @@ and [#11 here](https://github.com/JollyGrin/waterhouse-remotion/issues/11).
 src/ArtistRecap.tsx         the recap composition (5 beats, 600 frames)
 src/HouseWeekly.tsx         the weekly board (5 beats, 750 frames)
 src/PullUp.tsx              per-event loop
+src/pullup/plan.ts          reservations -> render jobs (solo vs shared)
+src/pullup/framing.ts       the portrait/landscape rule for the stream window
 src/WeeklyLineup.tsx        lineup story
 src/audience/schema.ts      zod props schemas: the contract between data and video
 src/audience/metrics.ts     every definition above, with tests (bun test)
