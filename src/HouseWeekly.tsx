@@ -287,7 +287,7 @@ const TheWeek: React.FC<
 const GLOSSARY: { term: string; rest: string }[] = [
   {
     term: "CROWD",
-    rest: " — the room you brought: new faces plus your own returning people.",
+    rest: " — people who came for you: new faces you pulled, plus your own regulars. House regulars who watch every show are not counted.",
   },
   {
     term: "PULLED",
@@ -295,9 +295,12 @@ const GLOSSARY: { term: string; rest: string }[] = [
   },
   {
     term: "HOLD",
-    rest: " — share of your viewers who stuck around, not just a drop-in.",
+    rest: " — share of everyone watching who stuck around, not just a drop-in.",
   },
-  { term: "PEAK", rest: " — most people watching at once." },
+  {
+    term: "PEAK",
+    rest: " — most people watching at once, everyone included: your crowd plus house regulars.",
+  },
   { term: "FOLLOWS", rest: " — new follows during your set." },
   { term: "SPOKE", rest: " — how many people chatted, out of everyone there." },
 ];
@@ -429,7 +432,7 @@ const TheBoard: React.FC<Pick<HouseWeeklyProps, "rows">> = ({ rows }) => {
 
   // Two-line rows, so the height per row is roughly double what a flat board
   // needed. Seven of them still clear the footnote.
-  const rowHeight = Math.min(180, Math.floor(1330 / Math.max(1, shown.length)));
+  const rowHeight = Math.min(180, Math.floor(1120 / Math.max(1, shown.length)));
 
   const glossaryIn = interpolate(frame, [0, 12], [0, 1], {
     extrapolateLeft: "clamp",
@@ -440,15 +443,17 @@ const TheBoard: React.FC<Pick<HouseWeeklyProps, "rows">> = ({ rows }) => {
     <Frame label="Ranked by crowd" left="Crowd" right="Substats">
       <div
         style={{
-          marginTop: 30,
+          marginTop: 18,
           display: "flex",
           flexDirection: "column",
-          gap: 8,
+          gap: 4,
           fontFamily: monoFont,
+          // CROWD and PEAK are allowed to wrap; the size is set by the
+          // longest entry that has to hold one line - PULLED, 76 characters
+          // against a 936px measure.
           fontSize: 20,
           lineHeight: 1.45,
           color: GREY,
-          whiteSpace: "nowrap",
           opacity: glossaryIn,
         }}
       >
@@ -476,6 +481,67 @@ const TheBoard: React.FC<Pick<HouseWeeklyProps, "rows">> = ({ rows }) => {
           }}
         />
 
+        {/* The big number needs its name back now that rows are two lines,
+            and the two-tone bar needs its key sitting over the bar itself. */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 18,
+            paddingTop: 12,
+            paddingBottom: 4,
+            fontFamily: monoFont,
+            fontSize: 24,
+            letterSpacing: 2,
+            textTransform: "uppercase",
+            color: GREY,
+            opacity: glossaryIn,
+          }}
+        >
+          <span style={{ width: 48, flexShrink: 0 }}>#</span>
+          <span style={{ flex: 1 }}>Artist</span>
+          <span style={{ width: 90, flexShrink: 0, textAlign: "right" }}>
+            Crowd
+          </span>
+          <span style={{ width: 300, flexShrink: 0 }} />
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            gap: 18,
+            paddingBottom: 10,
+            opacity: glossaryIn,
+          }}
+        >
+          <span style={{ flex: 1 }} />
+          <span
+            style={{
+              width: 90 + 18 + 300,
+              flexShrink: 0,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              fontFamily: monoFont,
+              fontSize: 20,
+              color: GREY,
+              whiteSpace: "nowrap",
+            }}
+          >
+            <span
+              style={{ width: 22, height: 12, background: ACCENT }}
+              aria-hidden
+            />
+            new faces
+            <span style={{ color: LINE }}>·</span>
+            <span
+              style={{ width: 22, height: 12, background: INK }}
+              aria-hidden
+            />
+            your regulars
+          </span>
+        </div>
+
         <div style={{ display: "flex", flexDirection: "column" }}>
           {shown.map((row, i) => (
             <BoardRowLine
@@ -495,7 +561,7 @@ const TheBoard: React.FC<Pick<HouseWeeklyProps, "rows">> = ({ rows }) => {
               fontFamily: monoFont,
               fontSize: 24,
               color: GREY,
-              marginTop: 20,
+              marginTop: 16,
               ...fadeUp(frame, 20, 12),
             }}
           >
@@ -747,6 +813,24 @@ const NextWeek: React.FC<Pick<HouseWeeklyProps, "nextWeek">> = ({
 
   return (
     <Frame label="Next week" left="Waterhouse" right="Link in bio">
+      {/* The bar to beat is a number out of nowhere without this line - but
+          with no lineup there is nothing for it to explain. */}
+      <div
+        style={{
+          display: nextWeek.length === 0 ? "none" : "block",
+          marginTop: 22,
+          fontFamily: monoFont,
+          fontSize: 26,
+          color: GREY,
+          opacity: interpolate(frame, [0, 12], [0, 1], {
+            extrapolateLeft: "clamp",
+            extrapolateRight: "clamp",
+          }),
+        }}
+      >
+        your crowd last time → the one to beat
+      </div>
+
       <div
         style={{
           flex: 1,
@@ -814,18 +898,18 @@ const NextWeek: React.FC<Pick<HouseWeeklyProps, "nextWeek">> = ({
                   {slot.artistName}
                 </span>
               </span>
-              {slot.beat !== null ? (
-                <span
-                  style={{
-                    fontFamily: monoFont,
-                    fontSize: 36,
-                    color: ACCENT,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  beat {slot.beat}
-                </span>
-              ) : null}
+              <span
+                style={{
+                  fontFamily: monoFont,
+                  fontSize: 36,
+                  color: slot.beat !== null ? ACCENT : GREY,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {slot.beat !== null
+                  ? `${slot.beat} → ${slot.beat + 1}`
+                  : "first one"}
+              </span>
             </div>
           ))
         )}
