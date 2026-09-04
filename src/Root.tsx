@@ -13,7 +13,14 @@ import {
   ArtistRecapSchema,
   ARTIST_RECAP_DURATION,
 } from "./ArtistRecap";
+import {
+  HouseWeekly,
+  houseWeeklyPropsSchema,
+  HOUSEWEEKLY_DURATION,
+} from "./HouseWeekly";
 import recapFixture from "./audience/fixtures/recap.json";
+import weeklyFixture from "./audience/fixtures/weekly.json";
+import weeklyFallbackFixture from "./audience/fixtures/weekly-fallback.json";
 import type { ArtistRecapProps } from "./audience/schema";
 
 const calculateWeeklyMetadata: CalculateMetadataFunction<WeeklyLineupProps> = ({
@@ -152,6 +159,28 @@ export const RemotionRoot: React.FC = () => {
           seed: 0,
           bedVariant: "b" as const,
         }}
+      />
+      <Composition
+        id="HouseWeekly"
+        component={HouseWeekly}
+        schema={houseWeeklyPropsSchema}
+        durationInFrames={HOUSEWEEKLY_DURATION}
+        fps={30}
+        width={1080}
+        height={1920}
+        defaultProps={houseWeeklyPropsSchema.parse(weeklyFixture)}
+      />
+      {/* A one-show week: single board row, badges mostly unearned, no lineup
+          for next week yet. The thin end of the data. */}
+      <Composition
+        id="HouseWeeklyFallback"
+        component={HouseWeekly}
+        schema={houseWeeklyPropsSchema}
+        durationInFrames={HOUSEWEEKLY_DURATION}
+        fps={30}
+        width={1080}
+        height={1920}
+        defaultProps={houseWeeklyPropsSchema.parse(weeklyFallbackFixture)}
       />
       {/* Second demo artist - no photo, no genre: exercises the fallbacks. */}
       <Composition
