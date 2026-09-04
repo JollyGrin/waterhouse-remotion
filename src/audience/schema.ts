@@ -89,6 +89,8 @@ export const boardRowSchema = z.object({
   artistImage: z.string().nullable(),
   pulled: z.number(),
   uniques: z.number(),
+  /** Highest peak concurrent viewers across their sessions this week. */
+  peak: z.number(),
   holdRate: z.number(),
   /** uniques minus the artist's previous session, null if it is their first. */
   deltaUniques: z.number().nullable(),

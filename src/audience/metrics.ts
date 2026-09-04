@@ -590,6 +590,17 @@ export interface BoardCandidate extends BoardRow {
   firstSessionMs: number;
 }
 
+/**
+ * The artist's best single moment across a set of sessions. Peaks are
+ * concurrent-viewer highs, so they max rather than sum: two 6-peak shows in
+ * one week is a 6, not a 12. Zero for an empty list.
+ */
+export function peakAcross(sessions: SessionAudience[]): number {
+  let peak = 0;
+  for (const s of sessions) peak = Math.max(peak, s.peak);
+  return peak;
+}
+
 /** pulled desc, then holdRate desc, then uniques desc. */
 export function rankBoardRows<T extends BoardRow>(rows: T[]): T[] {
   return rows.slice().sort((a, b) => {
@@ -664,6 +675,7 @@ export function toBoardRow(c: BoardCandidate): BoardRow {
     artistImage: c.artistImage,
     pulled: c.pulled,
     uniques: c.uniques,
+    peak: c.peak,
     holdRate: c.holdRate,
     deltaUniques: c.deltaUniques,
     shared: c.shared,

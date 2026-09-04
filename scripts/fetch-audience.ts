@@ -32,6 +32,7 @@ import {
   dayLabel,
   computeHoldRate,
   matchSessionToArtists,
+  peakAcross,
   pulledWindowStart,
   rangeLabel,
   rankBoardRows,
@@ -528,6 +529,8 @@ async function buildHouseWeekly(
         if (e.stayed) stayed.add(e.userId);
       }
     }
+    const peak = peakAcross(ordered.map((a) => a.audience));
+
     let pulled = 0;
     let cameBack = 0;
     for (const kind of kinds.values()) {
@@ -560,6 +563,7 @@ async function buildHouseWeekly(
       artistImage: bucket.artist.image,
       pulled,
       uniques,
+      peak,
       holdRate: computeHoldRate(stayed.size, uniques),
       deltaUniques,
       shared: bucket.shared,
@@ -779,7 +783,7 @@ async function main() {
     );
     for (const r of props.rows) {
       console.log(
-        `  ${r.artistName}: ${r.pulled} pulled, ${r.uniques} uniques, hold ${r.holdRate}` +
+        `  ${r.artistName}: ${r.pulled} pulled, ${r.uniques} uniques, peak ${r.peak}, hold ${r.holdRate}` +
           (r.badges.length ? ` [${r.badges.join(", ")}]` : ""),
       );
     }

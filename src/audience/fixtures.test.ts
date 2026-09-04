@@ -41,6 +41,11 @@ describe("checked-in fixtures", () => {
         weekly.rows[i].pulled,
       );
     }
+    // Peak is display-only, but every artist on the board streamed at
+    // least once, so it must be a positive count.
+    for (const row of weekly.rows) {
+      expect(row.peak).toBeGreaterThan(0);
+    }
     // Every badge is held by at most one artist.
     const seen = new Set<string>();
     for (const row of weekly.rows) {

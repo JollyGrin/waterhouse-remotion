@@ -11,6 +11,7 @@ import {
   isStayed,
   matchSessionToArtists,
   mergeVisits,
+  peakAcross,
   quadrantFor,
   rankBoardRows,
   stayThresholdMin,
@@ -282,6 +283,7 @@ function candidate(
     artistImage: null,
     pulled: 0,
     uniques: 0,
+    peak: 0,
     holdRate: 0,
     deltaUniques: null,
     shared: false,
@@ -374,6 +376,23 @@ describe("assignBadges", () => {
     assignBadges(rows);
     assignBadges(rows);
     expect(rows[0].badges).toEqual(["most-pulled"]);
+  });
+});
+
+describe("peakAcross", () => {
+  const withPeak = (peak: number) =>
+    ({ peak }) as unknown as Parameters<typeof peakAcross>[0][number];
+
+  test("takes the highest peak, never the sum", () => {
+    expect(peakAcross([withPeak(6), withPeak(9), withPeak(4)])).toBe(9);
+  });
+
+  test("two equal shows do not add up", () => {
+    expect(peakAcross([withPeak(6), withPeak(6)])).toBe(6);
+  });
+
+  test("an artist with no sessions peaks at zero", () => {
+    expect(peakAcross([])).toBe(0);
   });
 });
 
