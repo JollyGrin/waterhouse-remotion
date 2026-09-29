@@ -125,6 +125,9 @@ unchanged.
   THEN LIVE SET 19:20`, the set time following `--interview-minutes`
   (default 20). With `--no-interview` it reads `19:00 LIVE SET, HOSTED BY
   DENZO` and the chat and call to action switch to the set-only copy.
+- **Call to action** reads `TODAY 19:00` when you render on the session's
+  own date, and the weekday (`TUESDAY 19:00`) when you render ahead of time.
+  The line under the headline always keeps the weekday (`TUE 19:00`).
 - Photos hang by the same portrait/landscape rule as PullUp. A guest or host
   whose photo is missing or fails to load falls back to initials and the run
   ends with a loud warning; a room avatar falling back is only noted.

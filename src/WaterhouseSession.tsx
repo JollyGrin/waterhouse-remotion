@@ -19,7 +19,11 @@ import { loadFont as loadGrotesk } from "@remotion/google-fonts/SpaceGrotesk";
 import { initials } from "./pullup/plan";
 // The same portrait/landscape rule PullUp hangs its photos by.
 import { DEFAULT_FIT, PLAYER_FRAME, fitFor, type Fit } from "./pullup/framing";
-import { DEFAULT_INTERVIEW_MINUTES, runningOrder } from "./session/plan";
+import {
+  DEFAULT_INTERVIEW_MINUTES,
+  askDay,
+  runningOrder,
+} from "./session/plan";
 
 // WaterhouseSession: the Tuesday "Waterhouse Sessions" night. A fork of
 // PullUp.tsx - same loop, same room filling up, same sound - with Denzo and
@@ -56,6 +60,9 @@ export const WaterhouseSessionSchema = z.object({
   host: PersonSchema,
   // Upper-cased on screen: "TUESDAY".
   eventDay: z.string(),
+  // Rendered on the session's own date: the call to action says "TODAY"
+  // instead of the weekday. The line under the headline keeps the weekday.
+  today: z.boolean().optional(),
   eventTime: z.string(),
   eventDate: z.string(),
   // Most weeks Denzo interviews the guest, then they play. false makes it a
@@ -857,6 +864,7 @@ export const WaterhouseSession: React.FC<WaterhouseSessionProps> = ({
   host,
   eventDay,
   eventTime,
+  today = false,
   interview,
   interviewMinutes,
   avatars,
@@ -889,7 +897,7 @@ export const WaterhouseSession: React.FC<WaterhouseSessionProps> = ({
 
   const day = eventDay.toUpperCase();
   const headlineText = "WATERHOUSE SESSIONS";
-  const streamingText = `${day} ${eventTime}`;
+  const streamingText = `${askDay(eventDay, today)} ${eventTime}`;
   const captionText = runningOrder({
     hostName: host.name,
     eventTime,

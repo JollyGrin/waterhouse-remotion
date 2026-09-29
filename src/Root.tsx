@@ -283,6 +283,7 @@ export const RemotionRoot: React.FC = () => {
           eventDay: "Tuesday",
           eventTime: "19:00",
           eventDate: "Tue 29 Sep",
+          today: true,
           interview: true,
           interviewMinutes: 20,
           avatars: defaultPullUpAvatars,

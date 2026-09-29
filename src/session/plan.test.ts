@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   addMinutes,
+  askDay,
   findSessionSlot,
   matchArtist,
   runningOrder,
@@ -122,6 +123,16 @@ describe("running order", () => {
   test("addMinutes wraps past the hour and midnight", () => {
     expect(addMinutes("19:50", 20)).toBe("20:10");
     expect(addMinutes("23:50", 30)).toBe("00:20");
+  });
+});
+
+describe("askDay", () => {
+  test("TODAY when rendered on the session's date", () => {
+    expect(askDay("Tuesday", true)).toBe("TODAY");
+  });
+
+  test("the weekday otherwise", () => {
+    expect(askDay("Tuesday", false)).toBe("TUESDAY");
   });
 });
 

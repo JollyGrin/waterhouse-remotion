@@ -138,6 +138,15 @@ export function runningOrder({
   return `${eventTime} Interview with ${hostName}, then live set ${addMinutes(eventTime, interviewMinutes)}`;
 }
 
+/**
+ * The day in the call to action: "TODAY" when the clip is rendered on the
+ * session's own date, otherwise the weekday ("TUESDAY"). A clip forwarded
+ * days ahead must not say today.
+ */
+export function askDay(eventDay: string, today: boolean): string {
+  return today ? "TODAY" : eventDay.toUpperCase();
+}
+
 /** `Session-duncen-2026-09-29` - named after the guest as typed. */
 export function sessionStem(guest: string, day: string): string {
   return `Session-${slugify(guest)}-${day}`;

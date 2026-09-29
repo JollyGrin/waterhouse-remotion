@@ -422,6 +422,7 @@ async function main() {
     guest,
     host,
     eventDay: DAYS[date.getDay()],
+    today: args.day === isoDay(new Date()),
     eventTime,
     eventDate: `${DAYS[date.getDay()].slice(0, 3)} ${date.getDate()} ${MONTHS[date.getMonth()]}`,
     interview: args.interview,
