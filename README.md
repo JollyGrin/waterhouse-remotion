@@ -20,6 +20,7 @@ tokens or `.env` for the recap videos: every API they read is public.
 | **ArtistRecap** ("Who Showed Up") | An artist's last N shows: who came, who stayed, who was new, plus a target to beat next time | One artist, within a day of their show | `bun run render:recap "Tj Gee"` |
 | **HouseWeekly** | The week's board: every artist ranked by the crowd they brought, four badges, the 8-week house line, next week's lineup | The artist group chat, Monday morning | `bun run render:weekly-board --end 2026-09-03` |
 | **PullUp** | 10 s looping "I'm on tonight, pull up" clip per event. A shared booking - two or more artists on one reservation - gets a single clip led by the event title, with everyone on the bill in the stream window | Artists forward it to friends before a show | `bun run render:pullup` |
+| **WaterhouseSession** | 10 s looping clip for the Tuesday "Waterhouse Sessions" night: the guest and Denzo side by side in the stream window, with the running order ("interview with Denzo, then live set") under it | The guest forwards it to friends before the session | `bun run render:session --guest "Duncen"` |
 | **WeeklyLineup** | This week's lineup as a story | Instagram story | `bun run render:weekly` |
 
 Output lands in `out/` (gitignored). A clip takes 1–2 minutes to render.
@@ -99,6 +100,35 @@ case is printed loudly at the end of the run, listing which clips went out
 with initials where a face should be; do not forward those before fixing the
 artist's profile image.
 
+### WaterhouseSession
+
+```
+bun run render:session --guest "Duncen"                        # today, time from the calendar
+bun run render:session --guest "Duncen" --date 2026-10-06      # another Tuesday
+bun run render:session --guest "Duncen" --interview-minutes 30
+bun run render:session --guest "Duncen" --no-interview         # plain guest set, Denzo hosting
+bun run render:session --guest "Duncen" --time 20:00           # override the start time
+```
+
+Writes `out/Session-{guest-slug}-{YYYY-MM-DD}.mp4`, named after the guest as
+you typed it. A fork of PullUp (`src/WaterhouseSession.tsx`); PullUp itself is
+unchanged.
+
+- **Photos** for both Denzo and the guest come from their portal artist
+  profiles. `--guest` matches a stage name exactly, or by its leading word(s)
+  if that is unambiguous ("Duncen" finds "Duncen Haakmat"); the artists on
+  that night's booking are checked before the whole roster.
+- **Start time** defaults to the approved "Waterhouse Sessions" booking on
+  the portal calendar for that date. No booking, no `--time`: it stops and
+  asks for one.
+- **Running order** under the stream window: `19:00 INTERVIEW WITH DENZO,
+  THEN LIVE SET 19:20`, the set time following `--interview-minutes`
+  (default 20). With `--no-interview` it reads `19:00 LIVE SET, HOSTED BY
+  DENZO` and the chat and call to action switch to the set-only copy.
+- Photos hang by the same portrait/landscape rule as PullUp. A guest or host
+  whose photo is missing or fails to load falls back to initials and the run
+  ends with a loud warning; a room avatar falling back is only noted.
+
 ### Just the numbers
 
 ```
@@ -145,6 +175,8 @@ src/HouseWeekly.tsx         the weekly board (5 beats, 750 frames)
 src/PullUp.tsx              per-event loop
 src/pullup/plan.ts          reservations -> render jobs (solo vs shared)
 src/pullup/framing.ts       the portrait/landscape rule for the stream window
+src/WaterhouseSession.tsx   Tuesday session loop (fork of PullUp)
+src/session/plan.ts         calendar slot, guest lookup, running order
 src/WeeklyLineup.tsx        lineup story
 src/audience/schema.ts      zod props schemas: the contract between data and video
 src/audience/metrics.ts     every definition above, with tests (bun test)
@@ -152,7 +184,7 @@ src/audience/fixtures/      real-data examples the compositions preview with
 scripts/fetch-audience.ts   live data -> props JSON
 scripts/render-*.ts         one per video
 public/audio/recap/         shared sound kit for the recap videos (README inside)
-public/audio/pullup/        PullUp soundtrack
+public/audio/pullup/        PullUp soundtrack (WaterhouseSession uses it too)
 docs/                       latest rendered examples and frame strips
 ```
 
