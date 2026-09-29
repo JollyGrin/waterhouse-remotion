@@ -33,6 +33,7 @@
     "lint": "eslint src && tsc",
     "render:weekly": "bun scripts/render-weekly.ts",
     "render:pullup": "bun scripts/render-pullup.ts",
+    "render:session": "bun scripts/render-session.ts",
     "render:recap": "bun scripts/render-recap.ts",
     "render:weekly-board": "bun scripts/render-weekly-board.ts",
     "gen:audio": "bun scripts/gen-audio.ts",
