@@ -5,7 +5,9 @@
  * plays. The guest forwards it to friends, same as a PullUp.
  *
  * Usage:
+ *   bun run render:session                      # guest(s) from the booking
  *   bun run render:session --guest "Duncen"
+ *   bun run render:session --guest "Simon" --guest "Willem"
  *   bun run render:session --guest "Duncen" --date 2026-10-06
  *   bun run render:session --guest "Duncen" --time 20:00
  *   bun run render:session --guest "Duncen" --interview-minutes 30
@@ -13,6 +15,9 @@
  *
  * --guest   the guest's stage name on the Waterhouse portal. A first name is
  *           enough if it is unambiguous ("Duncen" -> "Duncen Haakmat").
+ *           Repeat it for a two-guest session. Without it, the guests are
+ *           the artists on that night's booking other than Denzo: one gives
+ *           the usual clip, two the two-guest interview layout.
  * --date    YYYY-MM-DD, default today.
  * --time    HH:MM, default the Waterhouse Sessions slot on the portal
  *           calendar for that date.
@@ -23,6 +28,7 @@
  * Uses $WATERHOUSE_TOKEN if set, otherwise the public calendar endpoint.
  *
  * Output: out/Session-{guest-slug}-{YYYY-MM-DD}.mp4
+ *         out/Session-{guest-slug}-{guest-slug}-{YYYY-MM-DD}.mp4 (two guests)
  */
 
 import { writeFileSync } from "fs";
@@ -41,8 +47,10 @@ import {
   DEFAULT_INTERVIEW_MINUTES,
   HOST_NAME,
   findSessionSlot,
+  joinNames,
   matchArtist,
   runningOrder,
+  sessionGuests,
   sessionStem,
   type SessionArtist,
   type SessionReservation,
@@ -134,8 +142,12 @@ function parseDay(day: string): Date | null {
 }
 
 // --- Args ---
+/** Two-guest sessions are the most the stream window lays out. */
+const MAX_GUESTS = 2;
+
 interface Args {
-  guest: string;
+  // As typed, in order. Empty: take them from the booking.
+  guests: string[];
   day: string;
   time: string | null;
   interview: boolean;
@@ -145,12 +157,12 @@ interface Args {
 function usage(message: string): never {
   console.error(`${message}\n`);
   console.error(
-    'Usage: bun run render:session --guest "Duncen" [--date YYYY-MM-DD] [--time HH:MM] [--interview-minutes 20] [--no-interview]',
+    'Usage: bun run render:session [--guest "Simon" [--guest "Willem"]] [--date YYYY-MM-DD] [--time HH:MM] [--interview-minutes 20] [--no-interview]',
   );
   process.exit(1);
 }
 
-function parseArgs(argv: string[]): Args {
+export function parseArgs(argv: string[]): Args {
   const value = (flag: string): string | null => {
     const i = argv.indexOf(flag);
     if (i === -1) return null;
@@ -160,8 +172,17 @@ function parseArgs(argv: string[]): Args {
     return v;
   };
 
-  const guest = value("--guest");
-  if (!guest || !guest.trim()) usage("--guest is required.");
+  const guests: string[] = [];
+  argv.forEach((arg, i) => {
+    if (arg !== "--guest") return;
+    const v = argv[i + 1];
+    if (v === undefined || v.indexOf("--") === 0 || !v.trim())
+      usage("--guest needs a value.");
+    guests.push(v.trim());
+  });
+  if (guests.length > MAX_GUESTS) {
+    usage(`At most ${MAX_GUESTS} --guest, got ${guests.length}.`);
+  }
 
   const day = value("--date") ?? isoDay(new Date());
   if (!parseDay(day)) usage(`--date must be YYYY-MM-DD, got "${day}".`);
@@ -183,7 +204,7 @@ function parseArgs(argv: string[]): Args {
   }
 
   return {
-    guest: guest.trim(),
+    guests,
     day,
     time: time && time.length === 4 ? `0${time}` : time,
     interview: argv.indexOf("--no-interview") === -1,
@@ -259,8 +280,8 @@ async function buildAvatars(
 }
 
 // The first bubble is always yours; the other two are seeded picks from the
-// pool for the night's format.
-function buildChatLines(
+// pool for the night's format. `guest` is every guest, already joined.
+export function buildChatLines(
   guest: string,
   interview: boolean,
   rng: () => number,
@@ -340,6 +361,62 @@ async function person(
   return { name: artist.stage_name, image: artist.profile_image_url };
 }
 
+/**
+ * The guests, each with what to call them in the filename (`typed`) and
+ * their portal artist if found. `--guest` wins; without it they are the
+ * booking's artists other than the host.
+ */
+function pickGuests(
+  args: Args,
+  hasSlot: boolean,
+  slotArtists: SessionArtist[],
+  roster: SessionArtist[],
+  hostArtist: SessionArtist | null,
+): Array<{ typed: string; artist: SessionArtist | null }> {
+  const others = sessionGuests(slotArtists, hostArtist?.id ?? null);
+
+  if (args.guests.length === 0) {
+    if (!hasSlot) {
+      usage(
+        `No Waterhouse Sessions booking on ${args.day} to take the guests from. Pass --guest.`,
+      );
+    }
+    if (others.length === 0 || others.length > MAX_GUESTS) {
+      usage(
+        `The ${args.day} session booking has ${others.length} artist(s) besides ${HOST_NAME}${
+          others.length > 0
+            ? ` (${others.map((a) => a.stage_name).join(", ")})`
+            : ""
+        }. Pass --guest for each guest.`,
+      );
+    }
+    console.log(
+      `Guest${others.length > 1 ? "s" : ""} from the booking: ${joinNames(
+        others.map((a) => a.stage_name),
+      )}.`,
+    );
+    return others.map((a) => ({ typed: a.stage_name, artist: a }));
+  }
+
+  return args.guests.map((typed) => {
+    const match = matchArtist(typed, others, roster);
+    if (match.kind === "ambiguous") {
+      usage(
+        `"${typed}" matches more than one artist: ${match.candidates
+          .map((a) => a.stage_name)
+          .join(", ")}. Use the full stage name.`,
+      );
+    }
+    const artist = match.kind === "found" ? match.artist : null;
+    if (hasSlot && artist && !slotArtists.some((a) => a.id === artist.id)) {
+      console.log(
+        `!! ${artist.stage_name} is not linked to the ${args.day} session booking on the portal. Rendering anyway.`,
+      );
+    }
+    return { typed, artist };
+  });
+}
+
 // --- Main ---
 async function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -389,37 +466,31 @@ async function main() {
   const hostMatch = matchArtist(HOST_NAME, slotArtists, roster);
   const hostArtist = hostMatch.kind === "found" ? hostMatch.artist : null;
 
-  const guestMatch = matchArtist(
-    args.guest,
-    slotArtists.filter((a) => a.id !== hostArtist?.id),
+  // Who the clip is for: as typed, or everyone on the booking but Denzo.
+  const picked = pickGuests(
+    args,
+    slot !== null,
+    slotArtists,
     roster,
+    hostArtist,
   );
-  if (guestMatch.kind === "ambiguous") {
-    usage(
-      `"${args.guest}" matches more than one artist: ${guestMatch.candidates
-        .map((a) => a.stage_name)
-        .join(", ")}. Use the full stage name.`,
-    );
+  const guestArtists = picked.map((p) => p.artist);
+  const guests: Array<{ name: string; image: string | null }> = [];
+  for (const p of picked) {
+    guests.push(await person("Guest", p.typed, p.artist, problems));
   }
-  const guestArtist = guestMatch.kind === "found" ? guestMatch.artist : null;
-  if (
-    slot &&
-    guestArtist &&
-    !slotArtists.some((a) => a.id === guestArtist.id)
-  ) {
-    console.log(
-      `!! ${guestArtist.stage_name} is not linked to the ${args.day} session booking on the portal. Rendering anyway.`,
-    );
-  }
-
-  const guest = await person("Guest", args.guest, guestArtist, problems);
   const host = await person("Host", HOST_NAME, hostArtist, problems);
+  const guestNames = guests.map((g) => g.name);
 
-  const seed = hashSeed(`session:${args.day}:${slugify(guest.name)}`);
+  // One guest seeds exactly as before.
+  const seed = hashSeed(
+    `session:${args.day}:${guestNames.map(slugify).join("-")}`,
+  );
   const rng = makeRng(seed);
 
   const props = {
-    guest,
+    // One guest keeps the original prop; two switch the layout.
+    ...(guests.length === 1 ? { guest: guests[0] } : { guests }),
     host,
     eventDay: DAYS[date.getDay()],
     today: args.day === isoDay(new Date()),
@@ -429,25 +500,33 @@ async function main() {
     interviewMinutes: args.interviewMinutes,
     avatars: await buildAvatars(
       roster,
-      [guestArtist?.id, hostArtist?.id].filter((id): id is string => !!id),
+      [...guestArtists.map((a) => a?.id), hostArtist?.id].filter(
+        (id): id is string => !!id,
+      ),
       rng,
     ),
-    chatLines: buildChatLines(guest.name, args.interview, rng),
+    chatLines: buildChatLines(joinNames(guestNames), args.interview, rng),
     seed: seed % 4,
   };
 
-  const stem = sessionStem(args.guest, args.day);
+  const stem = sessionStem(
+    picked.map((p) => p.typed),
+    args.day,
+  );
   const outPath = `out/${stem}.mp4`;
   const propsPath = `/tmp/waterhouse-${stem}.json`;
   writeFileSync(propsPath, JSON.stringify(props, null, 2));
 
   console.log(
-    `\n${guest.name} with ${host.name}, ${props.eventDate}: ${runningOrder({
-      hostName: host.name,
-      eventTime,
-      interview: args.interview,
-      interviewMinutes: args.interviewMinutes,
-    })}`,
+    `\n${joinNames(guestNames)} with ${host.name}, ${props.eventDate}: ${runningOrder(
+      {
+        hostName: host.name,
+        guestNames,
+        eventTime,
+        interview: args.interview,
+        interviewMinutes: args.interviewMinutes,
+      },
+    )}`,
   );
   console.log(
     `${SESSION_DURATION} frames (${(SESSION_DURATION / 30).toFixed(1)}s) -> ${outPath}`,
@@ -469,8 +548,11 @@ async function main() {
   // back to initials is only worth a note.
   const roomFallbacks: string[] = [];
   for (const src of failedPhotosIn(output)) {
-    const who =
-      src === guest.image ? "Guest" : src === host.image ? "Host" : null;
+    const who = guests.some((g) => g.image === src)
+      ? "Guest"
+      : src === host.image
+        ? "Host"
+        : null;
     if (who) {
       problems.push(
         `${who} photo loaded in the preflight but not in the render:\n     ${src}`,

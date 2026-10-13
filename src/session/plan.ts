@@ -114,8 +114,29 @@ export function addMinutes(hhmm: string, minutes: number): string {
   return `${pad2(Math.floor(total / 60))}:${pad2(total % 60)}`;
 }
 
+/**
+ * The session's own artists minus the host: who the clip is for when no
+ * `--guest` is given. One is the usual one-guest clip, two the two-guest
+ * interview layout.
+ */
+export function sessionGuests<A extends { id: string }>(
+  slotArtists: A[],
+  hostId: string | null,
+): A[] {
+  return uniqueById(slotArtists.filter((a) => a.id !== hostId));
+}
+
+/** `["Simon"]` is `"Simon"`, `["Simon", "Willem"]` is `"Simon & Willem"`. */
+export function joinNames(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} & ${names[names.length - 1]}`;
+}
+
 export interface RunningOrderInput {
   hostName: string;
+  // Only named when there is more than one guest, so a one-guest line is
+  // unchanged.
+  guestNames?: string[];
   eventTime: string;
   interview: boolean;
   interviewMinutes: number;
@@ -127,15 +148,28 @@ export interface RunningOrderInput {
  *
  *   interview: "19:00 Interview with Denzo, then live set 19:20"
  *   plain:     "19:00 Live set, hosted by Denzo"
+ *
+ * With two guests their names lead, as a line of their own on screen:
+ *
+ *   ["19:00 Simon & Willem", "Interview with Denzo, then live set 19:20"]
  */
-export function runningOrder({
+export function runningOrderLines({
   hostName,
+  guestNames = [],
   eventTime,
   interview,
   interviewMinutes,
-}: RunningOrderInput): string {
-  if (!interview) return `${eventTime} Live set, hosted by ${hostName}`;
-  return `${eventTime} Interview with ${hostName}, then live set ${addMinutes(eventTime, interviewMinutes)}`;
+}: RunningOrderInput): string[] {
+  const rest = interview
+    ? `Interview with ${hostName}, then live set ${addMinutes(eventTime, interviewMinutes)}`
+    : `Live set, hosted by ${hostName}`;
+  if (guestNames.length < 2) return [`${eventTime} ${rest}`];
+  return [`${eventTime} ${joinNames(guestNames)}`, rest];
+}
+
+/** The running order on one line: "19:00 Simon & Willem: Interview with ...". */
+export function runningOrder(input: RunningOrderInput): string {
+  return runningOrderLines(input).join(": ");
 }
 
 /**
@@ -147,7 +181,11 @@ export function askDay(eventDay: string, today: boolean): string {
   return today ? "TODAY" : eventDay.toUpperCase();
 }
 
-/** `Session-duncen-2026-09-29` - named after the guest as typed. */
-export function sessionStem(guest: string, day: string): string {
-  return `Session-${slugify(guest)}-${day}`;
+/**
+ * `Session-duncen-2026-09-29` - named after the guest as typed. Two guests
+ * are both in it: `Session-simon-willem-2026-10-13`.
+ */
+export function sessionStem(guest: string | string[], day: string): string {
+  const guests = typeof guest === "string" ? [guest] : guest;
+  return `Session-${guests.map(slugify).join("-")}-${day}`;
 }

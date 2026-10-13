@@ -3,8 +3,11 @@ import {
   addMinutes,
   askDay,
   findSessionSlot,
+  joinNames,
   matchArtist,
   runningOrder,
+  runningOrderLines,
+  sessionGuests,
   sessionStem,
   type SessionReservation,
 } from "./plan";
@@ -14,6 +17,17 @@ const duncen = {
   id: "g",
   stage_name: "Duncen Haakmat",
   profile_image_url: "g.png",
+};
+
+const simon = {
+  id: "s",
+  stage_name: "SimonSixSeven",
+  profile_image_url: "s.png",
+};
+const willem = {
+  id: "w",
+  stage_name: "willem verhoef",
+  profile_image_url: "w.jpg",
 };
 
 // UTC day is enough for the tests; the script passes a local-time one.
@@ -97,6 +111,37 @@ describe("matchArtist", () => {
   });
 });
 
+describe("sessionGuests", () => {
+  test("one artist besides Denzo is a one-guest session", () => {
+    expect(sessionGuests([denzo, duncen], denzo.id)).toEqual([duncen]);
+  });
+
+  test("two artists besides Denzo are both guests, in booking order", () => {
+    expect(sessionGuests([denzo, simon, willem], denzo.id)).toEqual([
+      simon,
+      willem,
+    ]);
+  });
+
+  test("Denzo missing from the booking excludes nobody", () => {
+    expect(sessionGuests([simon, willem], null)).toEqual([simon, willem]);
+  });
+
+  test("an artist linked twice counts once", () => {
+    expect(sessionGuests([denzo, simon, simon], denzo.id)).toEqual([simon]);
+  });
+});
+
+describe("joinNames", () => {
+  test("one name is itself", () => {
+    expect(joinNames(["Duncen Haakmat"])).toBe("Duncen Haakmat");
+  });
+
+  test("two names are joined with &", () => {
+    expect(joinNames(["Simon", "Willem"])).toBe("Simon & Willem");
+  });
+});
+
 describe("running order", () => {
   test("interview then set, with the set start computed", () => {
     expect(
@@ -120,6 +165,51 @@ describe("running order", () => {
     ).toBe("19:00 Live set, hosted by Denzo");
   });
 
+  test("one guest is never named - the line is unchanged", () => {
+    const input = {
+      hostName: "Denzo",
+      guestNames: ["Duncen Haakmat"],
+      eventTime: "19:00",
+      interview: true,
+      interviewMinutes: 20,
+    };
+    expect(runningOrderLines(input)).toEqual([
+      "19:00 Interview with Denzo, then live set 19:20",
+    ]);
+    expect(runningOrder(input)).toBe(
+      "19:00 Interview with Denzo, then live set 19:20",
+    );
+  });
+
+  test("two guests lead the running order, joined", () => {
+    const input = {
+      hostName: "Denzo",
+      guestNames: ["Simon", "Willem"],
+      eventTime: "19:00",
+      interview: true,
+      interviewMinutes: 20,
+    };
+    expect(runningOrderLines(input)).toEqual([
+      "19:00 Simon & Willem",
+      "Interview with Denzo, then live set 19:20",
+    ]);
+    expect(runningOrder(input)).toBe(
+      "19:00 Simon & Willem: Interview with Denzo, then live set 19:20",
+    );
+  });
+
+  test("two guests, no interview", () => {
+    expect(
+      runningOrder({
+        hostName: "Denzo",
+        guestNames: ["Simon", "Willem"],
+        eventTime: "19:00",
+        interview: false,
+        interviewMinutes: 20,
+      }),
+    ).toBe("19:00 Simon & Willem: Live set, hosted by Denzo");
+  });
+
   test("addMinutes wraps past the hour and midnight", () => {
     expect(addMinutes("19:50", 20)).toBe("20:10");
     expect(addMinutes("23:50", 30)).toBe("00:20");
@@ -138,4 +228,13 @@ describe("askDay", () => {
 
 test("filename stem is named after the guest as typed", () => {
   expect(sessionStem("Duncen", "2026-09-29")).toBe("Session-duncen-2026-09-29");
+  expect(sessionStem(["Duncen"], "2026-09-29")).toBe(
+    "Session-duncen-2026-09-29",
+  );
+});
+
+test("two guests are both in the filename stem", () => {
+  expect(sessionStem(["Simon", "Willem"], "2026-10-13")).toBe(
+    "Session-simon-willem-2026-10-13",
+  );
 });
