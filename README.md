@@ -20,7 +20,7 @@ tokens or `.env` for the recap videos: every API they read is public.
 | **ArtistRecap** ("Who Showed Up") | An artist's last N shows: who came, who stayed, who was new, plus a target to beat next time | One artist, within a day of their show | `bun run render:recap "Tj Gee"` |
 | **HouseWeekly** | The week's board: every artist ranked by the crowd they brought, four badges, the 8-week house line, next week's lineup | The artist group chat, Monday morning | `bun run render:weekly-board --end 2026-09-03` |
 | **PullUp** | 10 s looping "I'm on tonight, pull up" clip per event. A shared booking - two or more artists on one reservation - gets a single clip led by the event title, with everyone on the bill in the stream window | Artists forward it to friends before a show | `bun run render:pullup` |
-| **WaterhouseSession** | 10 s looping clip for the Tuesday "Waterhouse Sessions" night: the guest and Denzo side by side in the stream window, with the running order ("interview with Denzo, then live set") under it | The guest forwards it to friends before the session | `bun run render:session --guest "Duncen"` |
+| **WaterhouseSession** | 10 s looping clip for the Tuesday "Waterhouse Sessions" night: the guest and Denzo side by side in the stream window, with the running order ("interview with Denzo, then live set") under it | The guest forwards it to friends before the session | `bun run render:session` (guests from the booking) or `--guest "Duncen"` |
 | **WeeklyLineup** | This week's lineup as a story | Instagram story | `bun run render:weekly` |
 
 Output lands in `out/` (gitignored). A clip takes 1–2 minutes to render.
@@ -103,7 +103,10 @@ artist's profile image.
 ### WaterhouseSession
 
 ```
+bun run render:session                                         # guest(s) from tonight's booking
+bun run render:session --date 2026-10-13                       # Simon & Willem, two-guest layout
 bun run render:session --guest "Duncen"                        # today, time from the calendar
+bun run render:session --guest "Simon" --guest "Willem"        # two guests, named explicitly
 bun run render:session --guest "Duncen" --date 2026-10-06      # another Tuesday
 bun run render:session --guest "Duncen" --interview-minutes 30
 bun run render:session --guest "Duncen" --no-interview         # plain guest set, Denzo hosting
@@ -111,10 +114,20 @@ bun run render:session --guest "Duncen" --time 20:00           # override the st
 ```
 
 Writes `out/Session-{guest-slug}-{YYYY-MM-DD}.mp4`, named after the guest as
-you typed it. A fork of PullUp (`src/WaterhouseSession.tsx`); PullUp itself is
+you typed it (or their stage name when taken from the booking); two guests
+give `out/Session-{slug}-{slug}-{YYYY-MM-DD}.mp4`. A fork of PullUp (`src/WaterhouseSession.tsx`); PullUp itself is
 unchanged.
 
-- **Photos** for both Denzo and the guest come from their portal artist
+- **Guests**: without `--guest`, they are the artists linked to that night's
+  booking other than Denzo. One is the usual clip; two switch to the
+  two-guest layout; none or more than two stops and asks for `--guest`.
+  `--guest` can be given once or twice and always wins.
+- **Two guests**: the stream window shows three panes - both guests, then
+  Denzo as host - and the names are joined ("Simon & Willem") in the running
+  order (`19:00 SIMON & WILLEM` over `INTERVIEW WITH DENZO, THEN LIVE SET
+  19:20`), the chat line and the call to action. One-guest clips are
+  unchanged.
+- **Photos** for Denzo and the guest(s) come from their portal artist
   profiles. `--guest` matches a stage name exactly, or by its leading word(s)
   if that is unambiguous ("Duncen" finds "Duncen Haakmat"); the artists on
   that night's booking are checked before the whole roster.
@@ -128,7 +141,7 @@ unchanged.
 - **Call to action** reads `TODAY 19:00` when you render on the session's
   own date, and the weekday (`TUESDAY 19:00`) when you render ahead of time.
   The line under the headline always keeps the weekday (`TUE 19:00`).
-- Photos hang by the same portrait/landscape rule as PullUp. A guest or host
+- Photos hang by the same portrait/landscape rule as PullUp. Any guest or host
   whose photo is missing or fails to load falls back to initials and the run
   ends with a loud warning; a room avatar falling back is only noted.
 

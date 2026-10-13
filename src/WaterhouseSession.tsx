@@ -22,7 +22,8 @@ import { DEFAULT_FIT, PLAYER_FRAME, fitFor, type Fit } from "./pullup/framing";
 import {
   DEFAULT_INTERVIEW_MINUTES,
   askDay,
-  runningOrder,
+  joinNames,
+  runningOrderLines,
 } from "./session/plan";
 
 // WaterhouseSession: the Tuesday "Waterhouse Sessions" night. A fork of
@@ -56,7 +57,11 @@ const PersonSchema = z.object({
 export type Person = z.infer<typeof PersonSchema>;
 
 export const WaterhouseSessionSchema = z.object({
-  guest: PersonSchema,
+  // One guest, as most weeks. `guests` with two people instead switches the
+  // stream window to the two-guest interview layout; when both are given,
+  // `guests` wins.
+  guest: PersonSchema.optional(),
+  guests: z.array(PersonSchema).optional(),
   host: PersonSchema,
   // Upper-cased on screen: "TUESDAY".
   eventDay: z.string(),
@@ -155,6 +160,8 @@ function fitCaptionSize(
 // Below this the running order stops being readable on a phone.
 const CAPTION_MIN_SIZE = 20;
 const CAPTION_MAX_SIZE = 32;
+// Two lines (two guests) have to fit the same gap above the ask.
+const CAPTION_TWO_LINE_MAX_SIZE = 26;
 
 // An impact: at rest, hit, overshoot, settle back to rest. Zero deviation at
 // both ends, so it is safe to run across the loop seam.
@@ -420,18 +427,26 @@ const Vignette: React.FC = () => (
   />
 );
 
-// One half of the stream window: their photo, their role and their name
-// across the bottom. Each half is PANEL_FRAME-shaped, and the photo hangs in
-// it by the framing rule like any PullUp panel.
+// One pane of the stream window: their photo, their role and their name
+// across the bottom. With one guest each pane is a PANEL_FRAME-shaped half;
+// with two it is a third. Either way the photo hangs in it by the framing
+// rule like any PullUp panel.
 const PersonPanel: React.FC<{
   person: Person;
   role: string;
   accent: string;
   breathe: number;
-}> = ({ person, role, accent, breathe }) => {
+  // Widest a name may run, and the initials size, for this pane's width.
+  nameWidth: number;
+  initialsSize: number;
+}> = ({ person, role, accent, breathe, nameWidth, initialsSize }) => {
   const name = person.name.toUpperCase();
   const fallback = (
-    <PhotoFallback label={initials(person.name)} size={220} scale={breathe} />
+    <PhotoFallback
+      label={initials(person.name)}
+      size={initialsSize}
+      scale={breathe}
+    />
   );
 
   return (
@@ -476,7 +491,7 @@ const PersonPanel: React.FC<{
         <div
           style={{
             fontFamily: brandFont,
-            fontSize: fitBrandSize(name, 380, 76),
+            fontSize: fitBrandSize(name, nameWidth, 76),
             lineHeight: 1,
             color: "#ffffff",
             whiteSpace: "nowrap",
@@ -489,13 +504,18 @@ const PersonPanel: React.FC<{
   );
 };
 
-// Guest on the left - it is their clip - and Denzo on the right.
+// Guests on the left - it is their clip - and Denzo on the right. Two
+// guests make three equal panes.
 const PlayerFrame: React.FC<{
-  guest: Person;
+  guests: Person[];
   host: Person;
   accent: string;
   viewers: number;
-}> = ({ guest, host, accent, viewers }) => {
+}> = ({ guests, host, accent, viewers }) => {
+  const twoGuests = guests.length > 1;
+  // Halves keep their original sizes; thirds are ~272px wide.
+  const nameWidth = twoGuests ? 250 : 380;
+  const initialsSize = twoGuests ? 160 : 220;
   const frame = useCurrentFrame();
 
   // Periodic over the full 300 frames, so the seam is continuous.
@@ -514,17 +534,24 @@ const PlayerFrame: React.FC<{
         background: "rgba(255, 255, 255, 0.14)",
       }}
     >
-      <PersonPanel
-        person={guest}
-        role="GUEST"
-        accent={accent}
-        breathe={breathe}
-      />
+      {guests.map((guest, i) => (
+        <PersonPanel
+          key={i}
+          person={guest}
+          role="GUEST"
+          accent={accent}
+          breathe={breathe}
+          nameWidth={nameWidth}
+          initialsSize={initialsSize}
+        />
+      ))}
       <PersonPanel
         person={host}
         role="HOST"
         accent={accent}
         breathe={breathe}
+        nameWidth={nameWidth}
+        initialsSize={initialsSize}
       />
     </div>
   );
@@ -861,6 +888,7 @@ const SessionAudio: React.FC<{ bedVariant: "base" | "a" | "b" | "c" }> = ({
 // --- Main composition ---
 export const WaterhouseSession: React.FC<WaterhouseSessionProps> = ({
   guest,
+  guests: guestList,
   host,
   eventDay,
   eventTime,
@@ -877,6 +905,12 @@ export const WaterhouseSession: React.FC<WaterhouseSessionProps> = ({
   const frame = useCurrentFrame();
 
   const accent = ACCENTS[Math.abs(Math.round(seed)) % ACCENTS.length];
+
+  const guests: Person[] =
+    guestList && guestList.length > 0
+      ? guestList.slice(0, 2)
+      : [guest ?? { name: "Guest", image: null }];
+  const guestNames = joinNames(guests.map((g) => g.name));
 
   // Pad/trim to exactly FRIENDS entries so the row and counter stay in sync.
   const friends: Array<{ label: string; image: string | null }> = [];
@@ -898,12 +932,27 @@ export const WaterhouseSession: React.FC<WaterhouseSessionProps> = ({
   const day = eventDay.toUpperCase();
   const headlineText = "WATERHOUSE SESSIONS";
   const streamingText = `${askDay(eventDay, today)} ${eventTime}`;
-  const captionText = runningOrder({
+  const captionLines = runningOrderLines({
     hostName: host.name,
+    guestNames: guests.map((g) => g.name),
     eventTime,
     interview,
     interviewMinutes: interviewMinutes || DEFAULT_INTERVIEW_MINUTES,
-  }).toUpperCase();
+  }).map((line) => line.toUpperCase());
+  // One shared size, so both lines of a two-guest caption read as one block.
+  const captionSize =
+    captionLines.length === 1
+      ? fitCaptionSize(captionLines[0], 940, CAPTION_MAX_SIZE, CAPTION_MIN_SIZE)
+      : Math.min(
+          ...captionLines.map((line) =>
+            fitCaptionSize(
+              line,
+              940,
+              CAPTION_TWO_LINE_MAX_SIZE,
+              CAPTION_MIN_SIZE,
+            ),
+          ),
+        );
   const askLine = interview
     ? "HEAR THE STORY, STAY FOR THE SET."
     : "COME HANG FOR THE SET.";
@@ -962,35 +1011,37 @@ export const WaterhouseSession: React.FC<WaterhouseSessionProps> = ({
       </div>
 
       <PlayerFrame
-        guest={guest}
+        guests={guests}
         host={host}
         accent={accent}
         viewers={viewers}
       />
 
-      {/* Running order under the player */}
+      {/* Running order under the player. A two-line caption starts a little
+          higher to clear the ask. */}
       <div
         style={{
           position: "absolute",
-          top: 836,
+          top: captionLines.length === 1 ? 836 : 828,
           left: 70,
           width: 940,
           height: 42,
           textAlign: "center",
           fontFamily: bodyFont,
-          fontSize: fitCaptionSize(
-            captionText,
-            940,
-            CAPTION_MAX_SIZE,
-            CAPTION_MIN_SIZE,
-          ),
+          fontSize: captionSize,
+          lineHeight: captionLines.length === 1 ? undefined : 1.15,
           fontWeight: 700,
           letterSpacing: 5,
           color: "#8a8a8a",
           whiteSpace: "nowrap",
         }}
       >
-        {captionText}
+        {captionLines.map((line, i) => (
+          <React.Fragment key={i}>
+            {i > 0 ? <br /> : null}
+            {line}
+          </React.Fragment>
+        ))}
       </div>
 
       {/* The ask - on screen from frame 0, never leaves */}
@@ -1054,7 +1105,7 @@ export const WaterhouseSession: React.FC<WaterhouseSessionProps> = ({
         >
           {interview ? (
             <>
-              drop your questions for {guest.name} in chat.
+              drop your questions for {guestNames} in chat.
               <br />
               then stay for the set, muted is fine.
             </>
