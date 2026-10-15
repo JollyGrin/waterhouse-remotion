@@ -8,6 +8,8 @@
   "dependencies": {
     "@remotion/cli": "4.0.410",
     "@remotion/google-fonts": "4.0.410",
+    "@remotion/layout-utils": "4.0.410",
+    "@remotion/media-utils": "4.0.410",
     "@remotion/tailwind-v4": "4.0.410",
     "@remotion/transitions": "4.0.410",
     "react": "19.2.3",
@@ -40,7 +42,12 @@
     "gen:audio:recap": "bun scripts/gen-audio-recap.ts",
     "fetch:audience": "bun scripts/fetch-audience.ts",
     "test": "bun test",
-    "fetch:kenney": "bun scripts/fetch-kenney.ts"
+    "fetch:kenney": "bun scripts/fetch-kenney.ts",
+    "poster": "bun scripts/make-poster.ts",
+    "covers": "bun scripts/sync-covers.ts",
+    "reel": "bun scripts/reel/make-reel.ts",
+    "promo": "bun scripts/fort-riddim/promo.ts",
+    "showcase": "bun scripts/fort-riddim/showcase.ts"
   },
   "sideEffects": [
     "*.css"

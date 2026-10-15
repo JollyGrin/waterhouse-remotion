@@ -6,3 +6,17 @@ dist
 # Ignore the output video from Git but not videos you import into src/.
 out
 build
+
+# Weekly music tracks (copyrighted) + local test audio — keep out of the public repo
+public/audio/
+
+# Working files for the session video edit (large intermediates)
+work/
+public/session/
+
+# Large media and per-machine state — local only
+public/fort-riddim/
+public/reel/
+public/artists/
+posters/state.json
+weekly/state.json

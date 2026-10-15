@@ -2,6 +2,16 @@ import "./index.css";
 import { Composition, type CalculateMetadataFunction } from "remotion";
 import { MyComposition } from "./Composition";
 import {
+  SessionPosterType,
+  SessionPosterTypeSchema,
+  type SessionPosterTypeProps,
+} from "./SessionPosterType";
+import {
+  SessionPoster,
+  SessionPosterSchema,
+  type SessionPosterProps,
+} from "./SessionPoster";
+import {
   WeeklyLineup,
   WeeklyLineupSchema,
   getCompositionDuration,
@@ -27,6 +37,40 @@ import recapFixture from "./audience/fixtures/recap.json";
 import weeklyFixture from "./audience/fixtures/weekly.json";
 import weeklyFallbackFixture from "./audience/fixtures/weekly-fallback.json";
 import type { ArtistRecapProps } from "./audience/schema";
+import { staticFile } from "remotion";
+import { LogoReveal } from "./session/LogoReveal";
+import { SessionEpisode, getEpisodeDuration } from "./session/SessionEpisode";
+import type { CaptionWord } from "./session/Captions";
+import { FPS, WIDTH, HEIGHT, OPEN, CLOSE } from "./session/theme";
+import episodeEdl from "./session/data/edl.json";
+import {
+  SessionReel,
+  getReelDuration,
+  type ReelSegment,
+} from "./reel/SessionReel";
+import { FPS as REEL_FPS, WIDTH as REEL_WIDTH, HEIGHT as REEL_HEIGHT } from "./reel/theme";
+import reelData from "./reel/data/current.json";
+import { FortRiddim } from "./fort-riddim/FortRiddim";
+import { FortRiddimPromo } from "./fort-riddim/FortRiddimPromo";
+import * as PROMO from "./fort-riddim/promo";
+import { FortRiddimShowcase } from "./fort-riddim/FortRiddimShowcase";
+import * as SHOWCASE from "./fort-riddim/showcase";
+import * as FR from "./fort-riddim/edit";
+import episodeCaptions from "./session/data/captions.json";
+
+/**
+ * Only the five seconds at each end are cut out of the finished episode and placed
+ * in public/ — Remotion copies the whole public dir into its bundle on every render,
+ * so handing it the 4 GB master would copy 4 GB twice to use ten seconds of it.
+ * scripts/session/make-bookends.ts writes these.
+ */
+const HEAD_SRC = staticFile("session/head.mp4");
+const TAIL_SRC = staticFile("session/tail.mp4");
+
+/** The master's rate, recorded by build-edl. Older EDLs predate the field and are 60. */
+const EPISODE_FPS = (episodeEdl as { fps?: number }).fps ?? FPS;
+/** Picture frames in the cut master, before the black tail. */
+const EPISODE_FRAMES = Math.round(episodeEdl.outputDuration * EPISODE_FPS);
 
 const calculateWeeklyMetadata: CalculateMetadataFunction<WeeklyLineupProps> = ({
   props,
@@ -151,9 +195,123 @@ const recapFallbackProps: ArtistRecapProps = {
   nextSlot: null,
 };
 
+const defaultPoster: SessionPosterProps = {
+  artistName: "Timo Feyman",
+  sessionNumber: 12,
+  dateLabel: "30.7.2026",
+  photo: "artists/timo-feyman.png",
+  photoScale: 0.56,
+  photoOffsetX: -0.272,
+  photoOffsetY: -0.365,
+  photoMode: "window",
+  photoBottomFade: 0.32,
+  nameFont: "anton",
+  grainOpacity: 0.16,
+};
+
+const defaultTypePoster: SessionPosterTypeProps = {
+  artistName: "Miss Remalu",
+  sessionNumber: 9,
+  dateLabel: "23.7.2026",
+  variant: "blueprint",
+  grainOpacity: 0.18,
+};
+
 export const RemotionRoot: React.FC = () => {
   return (
     <>
+      <Composition
+        id="SessionPosterType"
+        component={SessionPosterType}
+        schema={SessionPosterTypeSchema}
+        durationInFrames={1}
+        fps={30}
+        width={2000}
+        height={2000}
+        defaultProps={defaultTypePoster}
+      />
+      <Composition
+        id="SessionEpisode"
+        component={SessionEpisode}
+        durationInFrames={getEpisodeDuration(EPISODE_FRAMES, EPISODE_FPS)}
+        fps={EPISODE_FPS}
+        width={WIDTH}
+        height={HEIGHT}
+        defaultProps={{
+          masterSrc: staticFile("session/master.mp4"),
+          captions: episodeCaptions as CaptionWord[],
+          videoDurationInFrames: EPISODE_FRAMES,
+        }}
+      />
+      <Composition
+        id="FortRiddim"
+        component={FortRiddim}
+        durationInFrames={FR.TOTAL_FRAMES}
+        fps={FR.FPS}
+        width={FR.WIDTH}
+        height={FR.HEIGHT}
+      />
+      <Composition
+        id="FortRiddimPromo"
+        component={FortRiddimPromo}
+        durationInFrames={PROMO.FRAMES}
+        fps={PROMO.FPS}
+        width={PROMO.WIDTH}
+        height={PROMO.HEIGHT}
+      />
+      <Composition
+        id="FortRiddimShowcase"
+        component={FortRiddimShowcase}
+        durationInFrames={SHOWCASE.FRAMES}
+        fps={SHOWCASE.FPS}
+        width={SHOWCASE.WIDTH}
+        height={SHOWCASE.HEIGHT}
+      />
+      <Composition
+        id="SessionReel"
+        component={SessionReel}
+        durationInFrames={getReelDuration(reelData.pictureFrames)}
+        fps={REEL_FPS}
+        width={REEL_WIDTH}
+        height={REEL_HEIGHT}
+        defaultProps={{
+          cutSrc: staticFile(reelData.cutFile),
+          segments: reelData.segments as ReelSegment[],
+          captions: reelData.captions as CaptionWord[],
+          pictureFrames: reelData.pictureFrames,
+          artist: reelData.artist,
+          episodeLabel: reelData.episodeLabel,
+          cta: reelData.cta,
+        }}
+      />
+      <Composition
+        id="SessionOpen"
+        component={LogoReveal}
+        durationInFrames={OPEN.durationInFrames}
+        fps={FPS}
+        width={WIDTH}
+        height={HEIGHT}
+        defaultProps={{ mode: "open" as const, src: HEAD_SRC, trimBefore: 0 }}
+      />
+      <Composition
+        id="SessionClose"
+        component={LogoReveal}
+        durationInFrames={CLOSE.durationInFrames}
+        fps={FPS}
+        width={WIDTH}
+        height={HEIGHT}
+        defaultProps={{ mode: "close" as const, src: TAIL_SRC, trimBefore: 0 }}
+      />
+      <Composition
+        id="SessionPoster"
+        component={SessionPoster}
+        schema={SessionPosterSchema}
+        durationInFrames={1}
+        fps={30}
+        width={2000}
+        height={2000}
+        defaultProps={defaultPoster}
+      />
       <Composition
         id="MyComp"
         component={MyComposition}
@@ -175,6 +333,7 @@ export const RemotionRoot: React.FC = () => {
           weekLabel: "THIS WEEK",
           dateRange: "3 - 9 March",
           artists: defaultArtists,
+          audioTrack: null,
         }}
       />
       <Composition
