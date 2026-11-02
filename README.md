@@ -54,6 +54,18 @@ recomputed.
 | `--font-px PX` | 68 | caption size at 1080p (scaled by frame height) |
 | `--llm-model M` | sonnet | model alias passed to `claude -p` |
 | `--force` | | ignore cached transcript / silences / A/V |
+| `--replace OLD=NEW` | | fix a misheard word in the captions (whole word, repeatable) |
+| `--cut START-END` | | also cut this range (input-file time, e.g. `20:03-20:29`; repeatable) |
+| `--move-to-front START-END` | | play this range first, e.g. an intro recorded at the end (repeatable) |
+
+`--cut` and `--move-to-front` take times from the input file, like the review list. Each
+edge is moved to the quietest point in the nearest gap between words. Example (the <guest>
+session: the intro was recorded after the interview, with production chatter before it):
+
+```
+uv run sesh-edit session.mov -o out/session.edited.mp4 \
+  --replace trends=trance --cut 20:03.0-20:29.0 --move-to-front 20:29.0-20:58.4
+```
 
 ## Pipeline
 

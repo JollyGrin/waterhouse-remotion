@@ -19,7 +19,7 @@ os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 from . import media
 from .captions import Style
-from .plan import Params, build_plan, is_filler
+from .plan import Params, build_plan, is_filler, rearrange
 
 T_START = time.time()
 
@@ -34,6 +34,34 @@ def fmt_t(s: float) -> str:
 
 
 # ------------------------------------------------------------------ steps
+
+def parse_t(x: str) -> float:
+    """'1234.5', '20:29', '20:29.4' or '1:02:03' -> seconds."""
+    sec = 0.0
+    for part in x.strip().split(":"):
+        sec = sec * 60 + float(part)
+    return sec
+
+
+def parse_range(x: str) -> tuple[float, float]:
+    a, b = x.split("-", 1)
+    return parse_t(a), parse_t(b)
+
+
+def apply_replacements(words: list[dict], pairs: list[str]) -> tuple[list[dict], list[dict]]:
+    """--replace trends=trance: whole-word, case-insensitive, punctuation kept."""
+    import re
+    done = []
+    for pair in pairs:
+        old, new = pair.split("=", 1)
+        rx = re.compile(r"^(\W*)" + re.escape(old) + r"(\W*)$", re.I)
+        for w in words:
+            m = rx.match(w["word"])
+            if m:
+                done.append({"start": w["start"], "from": w["word"], "to": m.group(1) + new + m.group(2)})
+                w["word"] = done[-1]["to"]
+    return words, done
+
 
 def step_transcribe(work: Path, audio16k: np.ndarray, force: bool) -> list[dict]:
     from .transcribe import ALIGN_MODEL, ASR_MODEL, transcribe
@@ -174,6 +202,12 @@ def main(argv=None) -> int:
     ap.add_argument("--silence-target", type=float, default=Params.silence_target)
     ap.add_argument("--silence-db", type=float, help="silencedetect threshold in dB (default: auto = noise floor + 10dB)")
     ap.add_argument("--font-px", type=float, default=Style.font_px_1080, help="caption size at 1080p")
+    ap.add_argument("--replace", action="append", default=[], metavar="OLD=NEW",
+                    help="fix a misheard word in the transcript/captions (whole word, repeatable)")
+    ap.add_argument("--cut", action="append", default=[], metavar="START-END",
+                    help="also cut this range of the input (e.g. 20:03.5-20:29.3; repeatable)")
+    ap.add_argument("--move-to-front", action="append", default=[], metavar="START-END",
+                    help="move this range of the input to the start of the edit, e.g. an intro recorded at the end")
     args = ap.parse_args(argv)
 
     src = str(Path(args.input).expanduser().resolve())
@@ -241,11 +275,26 @@ def main(argv=None) -> int:
         # ---- shift everything into video time, then plan cuts
         from .render import shift_audio
 
+        words, replaced = apply_replacements(words, args.replace)
+        for r in replaced:
+            log(f"    replaced {r['from']!r} -> {r['to']!r} at {fmt_t(r['start'])}")
         words_v = [dict(w, start=w["start"] - off, end=w["end"] - off) for w in words]
         sil_v = [(s - off, e - off) for s, e in silences]
         audio_v = shift_audio(audio16k, 16000, off)
         plan = build_plan(words_v, pre["take_start_s"] - off, info["duration"], sil_v, audio_v, params)
         cuts = plan["cuts"]
+        manual = None
+        if args.cut or args.move_to_front:
+            # ranges are given in input-file time (as in the review list); plan is in video time
+            keeps0 = plan["keep_segments"]
+            plan["keep_segments"], manual = rearrange(
+                keeps0, [(a - off, b - off) for a, b in map(parse_range, args.cut)],
+                [(a - off, b - off) for a, b in map(parse_range, args.move_to_front)], words_v, audio_v)
+            manual["cut_removed_s"] = round(sum(e - s for s, e in keeps0) - sum(e - s for s, e in plan["keep_segments"]), 2)
+            for a, b in manual["cut_v"]:
+                log(f"    manual cut {fmt_t(a + off)}-{fmt_t(b + off)}")
+            for a, b in manual["move_to_front_v"]:
+                log(f"    moved to front {fmt_t(a + off)}-{fmt_t(b + off)}")
         kinds: dict[str, float] = {}
         counts: dict[str, int] = {}
         for c in cuts:
@@ -284,7 +333,10 @@ def main(argv=None) -> int:
                 "seconds_removed_by_kind": {k: round(v, 2) for k, v in kinds.items()},
                 "cuts_by_kind": counts,
                 "gaps_skipped_not_silent": len(plan["skipped_gaps"]),
+                "manual_cut_removed_s": manual["cut_removed_s"] if manual else 0.0,
             },
+            "replacements": replaced,
+            "manual_edits": manual,
             "cuts": cuts,
             "skipped_gaps": plan["skipped_gaps"],
             "keep_segments": plan["keep_segments"],

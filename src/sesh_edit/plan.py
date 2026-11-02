@@ -213,7 +213,10 @@ def build_plan(words_v: list[dict], take_start_v: float, duration: float, silenc
 # ------------------------------------------------------------ time mapping
 
 class TimeMap:
-    """Maps source (video) time <-> output time through keep segments."""
+    """Maps source (video) time <-> output time through keep segments.
+
+    Keep segments are played in list order, which need not be chronological
+    (e.g. an intro recorded at the end and moved to the front)."""
 
     def __init__(self, keeps: list[list[float]]):
         self.s = np.array([k[0] for k in keeps])
@@ -221,15 +224,69 @@ class TimeMap:
         self.cum = np.concatenate([[0.0], np.cumsum(self.e - self.s)])
         self.total = float(self.cum[-1])
 
-    def to_out(self, t: float) -> float | None:
-        i = int(np.searchsorted(self.s, t, side="right")) - 1
-        if i < 0:
-            return 0.0
-        if t <= self.e[i]:
-            return float(self.cum[i] + (t - self.s[i]))
-        return float(self.cum[i + 1])  # inside a cut -> snap to next segment start
+    def segment_of(self, t: float, tol: float = 0.0) -> int | None:
+        hit = np.nonzero((self.s - tol <= t) & (t <= self.e + tol))[0]
+        return int(hit[0]) if len(hit) else None
+
+    def to_out(self, t: float, tol: float = 0.0) -> float | None:
+        """Output time of source time t, or None if t is cut."""
+        i = self.segment_of(t, tol)
+        if i is None:
+            return None
+        return float(self.cum[i] + min(max(t, self.s[i]), self.e[i]) - self.s[i])
 
     def to_src(self, t_out: float) -> float:
         i = int(np.searchsorted(self.cum, t_out, side="right")) - 1
         i = min(max(i, 0), len(self.s) - 1)
         return float(self.s[i] + (t_out - self.cum[i]))
+
+
+# ------------------------------------------------------------ manual rearrangement
+
+def _quiet_boundary(t: float, words_v: list[dict], audio16k_v: np.ndarray) -> float:
+    """Move t into the nearest gap between words, at its quietest millisecond."""
+    ws = sorted(words_v, key=lambda w: w["start"])
+    gaps = [(0.0, ws[0]["start"])] + [(a["end"], b["start"]) for a, b in zip(ws, ws[1:]) if b["start"] > a["end"]] \
+        + [(ws[-1]["end"], len(audio16k_v) / 16000)]
+    lo, hi = min(gaps, key=lambda g: 0.0 if g[0] <= t <= g[1] else min(abs(t - g[0]), abs(t - g[1])))
+    rms = _rms_ms(audio16k_v)
+    a, b = int((lo + 0.02) * 1000), int((hi - 0.02) * 1000)
+    b = min(b, len(rms) - 1)
+    if b <= a:
+        return round((lo + hi) / 2, 4)
+    return round((a + int(np.argmin(rms[a:b]))) / 1000, 4)
+
+
+def rearrange(keeps: list[list[float]], cut: list[tuple[float, float]], front: list[tuple[float, float]],
+              words_v: list[dict], audio16k_v: np.ndarray) -> tuple[list[list[float]], dict]:
+    """Remove `cut` ranges, then move `front` ranges to the start (in the given order).
+    All ranges are video time; their edges are snapped to quiet points between words."""
+    snap = lambda r: (_quiet_boundary(r[0], words_v, audio16k_v), _quiet_boundary(r[1], words_v, audio16k_v))
+    cut, front = [snap(r) for r in cut], [snap(r) for r in front]
+    segs = [list(k) for k in keeps]
+    for cs, ce in cut:
+        nxt = []
+        for s, e in segs:
+            if e <= cs or s >= ce:
+                nxt.append([s, e])
+                continue
+            if s < cs:
+                nxt.append([s, cs])
+            if e > ce:
+                nxt.append([ce, e])
+        segs = nxt
+    head = []
+    for fs, fe in front:
+        rest = []
+        for s, e in segs:
+            if s < fe and e > fs:
+                head.append([max(s, fs), min(e, fe)])
+                if s < fs:
+                    rest.append([s, fs])
+                if e > fe:
+                    rest.append([fe, e])
+            else:
+                rest.append([s, e])
+        segs = rest
+    out = [[round(s, 4), round(e, 4)] for s, e in head + segs if e - s > 0.01]
+    return out, {"cut_v": [list(r) for r in cut], "move_to_front_v": [list(r) for r in front]}

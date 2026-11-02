@@ -41,10 +41,13 @@ def cut_audio(audio: np.ndarray, sr: int, keeps: list[list[float]], fade_ms: flo
 def caption_lines(cap_words: list[dict], tm: TimeMap, W: int, H: int, st: Style):
     out_words = []
     for w in cap_words:
-        s, e = tm.to_out(w["start"]), tm.to_out(w["end"])
-        if s is None or e is None:
-            continue
-        out_words.append({"word": w["word"], "start": s, "end": max(e, s + 0.05)})
+        i = tm.segment_of(w["start"], tol=0.03)
+        if i is None:
+            continue  # word was cut
+        s = tm.cum[i] + max(0.0, w["start"] - tm.s[i])
+        e = tm.cum[i] + min(w["end"], tm.e[i]) - tm.s[i]
+        out_words.append({"word": w["word"], "start": float(s), "end": float(max(e, s + 0.05))})
+    out_words.sort(key=lambda w: w["start"])
     r = Renderer(W, H, st)
     return group_lines(out_words, W, r.font, st), r
 
@@ -79,10 +82,7 @@ def render(src: str, info: dict, decisions: dict, out_mp4: Path, out_srt: Path, 
     src_idx = np.array([int(round(tm.to_src((n + 0.5) / fps) * fps - 0.5)) for n in range(n_out)])
     src_idx = np.clip(src_idx, 0, None)
     first = int(src_idx[0])
-    t0 = first / fps
-    log(f"    video: {n_out} output frames from source frames {first}..{src_idx[-1]}")
-    dec = subprocess.Popen(["ffmpeg", "-v", "error", "-ss", f"{t0:.4f}", "-i", src, "-an", "-f", "rawvideo",
-                            "-pix_fmt", "rgb24", "-"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    log(f"    video: {n_out} output frames")
     enc = subprocess.Popen(
         ["ffmpeg", "-v", "error", "-y",
          "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", f"{fps}", "-i", "-",
@@ -93,11 +93,29 @@ def render(src: str, info: dict, decisions: dict, out_mp4: Path, out_srt: Path, 
         stdin=subprocess.PIPE,
     )
     fsz = W * H * 3
+    dec = None
+
+    def open_decoder(idx: int):
+        # segments may be out of order (moved intro): (re)start decoding at frame idx
+        return subprocess.Popen(["ffmpeg", "-v", "error", "-ss", f"{idx / fps:.4f}", "-i", src, "-an", "-f", "rawvideo",
+                                 "-pix_fmt", "rgb24", "-"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+
+    def close_decoder(d):
+        if d is not None:
+            d.stdout.close()
+            d.kill()
+            d.wait()
+
     cur_idx = first - 1
     frame = None
     hint = 0
     try:
         for n, want in enumerate(src_idx):
+            if dec is None or want < cur_idx or want - cur_idx > fps * 10:
+                close_decoder(dec)
+                dec = open_decoder(int(want))
+                cur_idx = int(want) - 1
+                log(f"      decoding from source frame {want} ({want / fps:.2f}s)")
             while cur_idx < want:
                 b = dec.stdout.read(fsz)
                 if len(b) < fsz:
@@ -114,9 +132,7 @@ def render(src: str, info: dict, decisions: dict, out_mp4: Path, out_srt: Path, 
     finally:
         enc.stdin.close()
         enc.wait()
-        dec.stdout.close()
-        dec.kill()
-        dec.wait()
+        close_decoder(dec)
     if enc.returncode != 0:
         raise RuntimeError("ffmpeg encode failed")
     return {"output_duration_s": round(len(cut) / sr, 3), "caption_lines": len(lines), "frames": n_out}
