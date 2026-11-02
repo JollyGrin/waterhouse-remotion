@@ -213,16 +213,32 @@ def build_plan(words_v: list[dict], take_start_v: float, duration: float, silenc
 # ------------------------------------------------------------ time mapping
 
 class TimeMap:
-    """Maps source (video) time <-> output time through keep segments.
+    """Maps source (video) time <-> output time through the edit timeline.
 
-    Keep segments are played in list order, which need not be chronological
-    (e.g. an intro recorded at the end and moved to the front)."""
+    The timeline is the keep segments, played in list order (not necessarily
+    chronological, e.g. an intro recorded at the end and moved to the front), plus
+    optional inserts (clips from other files, title cards) placed before a given keep
+    segment. Insert items have NaN source times, so they never match a source time."""
 
-    def __init__(self, keeps: list[list[float]]):
-        self.s = np.array([k[0] for k in keeps])
-        self.e = np.array([k[1] for k in keeps])
-        self.cum = np.concatenate([[0.0], np.cumsum(self.e - self.s)])
+    def __init__(self, keeps: list[list[float]], inserts: list[dict] | None = None):
+        items: list[dict] = []
+        ins = sorted(inserts or [], key=lambda x: (x["before"], 0 if x["kind"] == "clip" else 1))
+        j = 0
+        for i in range(len(keeps) + 1):
+            while j < len(ins) and ins[j]["before"] <= i:
+                items.append(dict(ins[j], dur=float(ins[j]["dur_s"])))
+                j += 1
+            if i < len(keeps):
+                items.append({"kind": "main", "start": keeps[i][0], "end": keeps[i][1], "dur": keeps[i][1] - keeps[i][0]})
+        self.items = items
+        self.s = np.array([it["start"] if it["kind"] == "main" else np.nan for it in items])
+        self.e = np.array([it["end"] if it["kind"] == "main" else np.nan for it in items])
+        self.cum = np.concatenate([[0.0], np.cumsum([it["dur"] for it in items])])
         self.total = float(self.cum[-1])
+
+    def item_at(self, t_out: float) -> int:
+        i = int(np.searchsorted(self.cum, t_out, side="right")) - 1
+        return min(max(i, 0), len(self.items) - 1)
 
     def segment_of(self, t: float, tol: float = 0.0) -> int | None:
         hit = np.nonzero((self.s - tol <= t) & (t <= self.e + tol))[0]
@@ -236,8 +252,8 @@ class TimeMap:
         return float(self.cum[i] + min(max(t, self.s[i]), self.e[i]) - self.s[i])
 
     def to_src(self, t_out: float) -> float:
-        i = int(np.searchsorted(self.cum, t_out, side="right")) - 1
-        i = min(max(i, 0), len(self.s) - 1)
+        """Source time for output time t_out (NaN inside an insert)."""
+        i = self.item_at(t_out)
         return float(self.s[i] + (t_out - self.cum[i]))
 
 

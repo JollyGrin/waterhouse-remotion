@@ -63,6 +63,49 @@ def apply_replacements(words: list[dict], pairs: list[str]) -> tuple[list[dict],
     return words, done
 
 
+def resolve_inserts(args, keeps: list[list[float]], off: float, words_v: list[dict], audio_v: np.ndarray) -> list[dict]:
+    """--insert-clip / --title-card -> inserts placed before a keep segment index.
+
+    AT is input-file time. If a keep segment starts within 2s of AT, the insert goes
+    before it; otherwise the segment holding AT is split at the quietest point between
+    words (keeps is modified in place)."""
+    from .plan import _quiet_boundary
+
+    def place(at: float) -> int:
+        at_v = at - off
+        i = min(range(len(keeps)), key=lambda k: abs(keeps[k][0] - at_v))
+        if abs(keeps[i][0] - at_v) <= 2.0:
+            return i
+        t = _quiet_boundary(at_v, words_v, audio_v)
+        for k, (s, e) in enumerate(keeps):
+            if s < t < e:
+                keeps[k:k + 1] = [[s, t], [t, e]]
+                return k + 1
+        raise SystemExit(f"insert point {fmt_t(at)} is inside a cut; pick a time that is kept")
+
+    raw = []
+    for at, path, rng in args.insert_clip:
+        a, b = parse_range(rng)
+        path = str(Path(path).expanduser().resolve())
+        raw.append((parse_t(at), {"kind": "clip", "path": path, "start": a, "dur_s": round(b - a, 3),
+                                  "fade_s": args.clip_fade, "gain_db": args.clip_gain, "video_fade_out_s": 0.0}))
+    for at, text in args.title_card:
+        raw.append((parse_t(at), {"kind": "card", "text": text, "dur_s": args.card_dur, "fade_s": 0.5}))
+    out = []
+    for at, ins in raw:
+        ins["at_input_s"] = at
+        out.append(ins)
+    for ins in out:
+        ins["before"] = place(ins["at_input_s"])
+    for ins in out:  # splits may have shifted indices: resolve again (idempotent now)
+        ins["before"] = place(ins["at_input_s"])
+    # a clip directly followed by a title card dips to black with its audio fade
+    for ins in out:
+        if ins["kind"] == "clip" and any(o["kind"] == "card" and o["before"] == ins["before"] for o in out):
+            ins["video_fade_out_s"] = ins["fade_s"]
+    return out
+
+
 def step_transcribe(work: Path, audio16k: np.ndarray, force: bool) -> list[dict]:
     from .transcribe import ALIGN_MODEL, ASR_MODEL, transcribe
 
@@ -208,6 +251,18 @@ def main(argv=None) -> int:
                     help="also cut this range of the input (e.g. 20:03.5-20:29.3; repeatable)")
     ap.add_argument("--move-to-front", action="append", default=[], metavar="START-END",
                     help="move this range of the input to the start of the edit, e.g. an intro recorded at the end")
+    ap.add_argument("--insert-clip", action="append", nargs=3, default=[], metavar=("AT", "FILE", "START-END"),
+                    help="insert FILE[START-END] into the edit just before input time AT (repeatable)")
+    ap.add_argument("--clip-fade", type=float, default=0.4, help="audio fade in/out on inserted clips (s)")
+    ap.add_argument("--clip-gain", type=float, default=-6.0,
+                    help="inserted clip level relative to the speech, dB (default -6)")
+    ap.add_argument("--title-card", action="append", nargs=2, default=[], metavar=("AT", "TEXT"),
+                    help="black title card with TEXT just before input time AT (after any clip at AT; repeatable)")
+    ap.add_argument("--card-dur", type=float, default=3.5, help="title card length (s)")
+    ap.add_argument("--keep-stereo", action="store_true",
+                    help="keep the original channels (default: mix the two mics to a centred, level-matched track)")
+    ap.add_argument("--no-loudnorm", action="store_true", help="skip loudness normalisation")
+    ap.add_argument("--lufs", type=float, default=-14.0, help="loudness target (default -14 LUFS, true peak -1 dBTP)")
     args = ap.parse_args(argv)
 
     src = str(Path(args.input).expanduser().resolve())
@@ -295,6 +350,11 @@ def main(argv=None) -> int:
                 log(f"    manual cut {fmt_t(a + off)}-{fmt_t(b + off)}")
             for a, b in manual["move_to_front_v"]:
                 log(f"    moved to front {fmt_t(a + off)}-{fmt_t(b + off)}")
+        inserts = resolve_inserts(args, plan["keep_segments"], off, words_v, audio_v)
+        for ins in inserts:
+            what = f"{Path(ins['path']).name} {fmt_t(ins['start'])}-{fmt_t(ins['start'] + ins['dur_s'])}" \
+                if ins["kind"] == "clip" else repr(ins["text"])
+            log(f"    insert {ins['kind']} before keep segment {ins['before']}: {what}")
         kinds: dict[str, float] = {}
         counts: dict[str, int] = {}
         for c in cuts:
@@ -305,7 +365,7 @@ def main(argv=None) -> int:
         filler_audio = sum(c.get("filler_s", 0.0) for c in cuts if c["kind"] == "filler")
         filler_cut_total = sum(c["end"] - c["start"] for c in cuts if c["kind"] == "filler")
         silence_total = kinds.get("silence", 0.0) + (filler_cut_total - filler_audio)
-        out_dur = sum(e - s for s, e in plan["keep_segments"])
+        out_dur = sum(e - s for s, e in plan["keep_segments"]) + sum(i["dur_s"] for i in inserts)
         decisions = {
             "version": 1,
             "input": src,
@@ -340,6 +400,9 @@ def main(argv=None) -> int:
             "cuts": cuts,
             "skipped_gaps": plan["skipped_gaps"],
             "keep_segments": plan["keep_segments"],
+            "inserts": inserts,
+            "audio": {"mix": "original" if args.keep_stereo else "centred",
+                      "loudnorm": None if args.no_loudnorm else {"i": args.lufs, "tp": -1.0}},
             "caption_words": plan["caption_words"],
         }
         out_dec.write_text(json.dumps(decisions, indent=1))
@@ -369,6 +432,8 @@ def main(argv=None) -> int:
     log("7/7 render: one pass, h264 + aac, burned karaoke captions")
     st = Style(**decisions.get("style", asdict(st)))
     res = render(src, info, decisions, out_mp4, out_srt, work, st, fade_ms=decisions["params"]["fade_ms"], log=lambda m: log(m))
+    decisions["render"] = {k: v for k, v in res.items() if k in ("audio_mix", "loudness", "inserts")}
+    out_dec.write_text(json.dumps(decisions, indent=1))
     log(f"done: {out_mp4} ({fmt_t(res['output_duration_s'])}), {out_srt}, {res['caption_lines']} caption lines")
     log(f"total runtime {time.time() - T_START:.0f}s")
     return 0

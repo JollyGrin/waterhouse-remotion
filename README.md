@@ -58,14 +58,28 @@ recomputed.
 | `--cut START-END` | | also cut this range (input-file time, e.g. `20:03-20:29`; repeatable) |
 | `--move-to-front START-END` | | play this range first, e.g. an intro recorded at the end (repeatable) |
 
-`--cut` and `--move-to-front` take times from the input file, like the review list. Each
+| `--insert-clip AT FILE START-END` | | insert a clip from another file before input time AT (repeatable) |
+| `--clip-fade S` / `--clip-gain DB` | 0.4 / -6 | clip audio fades, and clip level relative to the speech |
+| `--title-card AT TEXT` | | black card, white Inter Bold text, before input time AT (after any clip at AT) |
+| `--card-dur S` | 3.5 | title card length (0.5s text fades) |
+| `--keep-stereo` | | keep the original mic channels (default: centred mic mix, see below) |
+| `--lufs` / `--no-loudnorm` | -14 | loudness target (true peak -1 dBTP) / skip it |
+
+`--cut`, `--move-to-front`, `--insert-clip` and `--title-card` take times from the input file, like the review list. Each
 edge is moved to the quietest point in the nearest gap between words. Example (the <guest>
 session: the intro was recorded after the interview, with production chatter before it):
 
 ```
 uv run sesh-edit session.mov -o out/session.edited.mp4 \
-  --replace trends=trance --cut 20:03.0-20:29.0 --move-to-front 20:29.0-20:58.4
+  --replace trends=trance --cut 20:03.0-20:29.0 --move-to-front 20:29.0-20:58.4 \
+  --insert-clip 0:01 ~/Movies/session-stream.mov 57:48.4-57:56.4 \
+  --title-card 0:01 "How did you first get into electronic music?"
 ```
+
+An insert at AT goes before the kept segment starting within 2s of AT; otherwise that
+segment is split at the quietest point between words. Inserted clips are conformed to the
+interview's size and fps, level-matched to the speech, and fade in and out. A clip directly
+followed by a title card also dips to black. Captions never run over an insert.
 
 ## Pipeline
 
@@ -118,7 +132,19 @@ uv run sesh-edit session.mov -o out/session.edited.mp4 \
    against the text width in `reference/`), scaled by frame height, soft drop shadow, no
    outline. Spoken words are white; the current word is white on a rounded `#00AEFF` box;
    upcoming words are 50% white. Rendered with Pillow; each (line, word) state is cached.
-7. **Render**: audio is cut sample-accurately in numpy. Video frames are resampled
+7. **Audio finishing** (default; `--keep-stereo` turns it off). Each RODE mic is recorded
+   to its own channel, so as-is each voice plays in one ear. The two channels are
+   level-matched (median speech level of each mic while it leads), then summed to an
+   identical L/R (centred) track. Each mic also picks up the other speaker ~16 dB down
+   and ~2.4 ms late, so a straight sum comb-filters ("phasey" sound; measured 2.4 dB
+   spectral ripple on one voice). To avoid that, the channel that is >3 dB quieter is
+   ducked by up to 15 dB (fast open, 200ms close), which brings the ripple to 0.9 dB. Both
+   stay open when both people talk. Loudness: gentle speech compression (3:1 above
+   -28 dBFS), one linear gain to -14 LUFS, and a 4x-oversampled limiter at -1.3 dBFS. The
+   gain is corrected once for the limiter, then the result is re-measured. ffmpeg's
+   loudnorm alone falls back to its dynamic AGC here, because speech peaks sit ~24 dB
+   above its loudness. This step takes 2-6 min.
+8. **Render**: audio is cut sample-accurately in numpy. Video frames are resampled
    through the cut time-map: output frame *n* shows source frame
    `round(to_src(n/fps)·fps)`, so A/V never drifts across hundreds of cuts. Captions are
    alpha-blended in, then piped to a single ffmpeg encode (libx264 crf 18 + aac 192k).
