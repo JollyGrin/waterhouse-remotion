@@ -1,0 +1,26 @@
+[project]
+name = "sesh-edit"
+version = "0.1.0"
+description = "Auto-edit longform Waterhouse Sessions interview videos"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "torch>=2.4",
+    "transformers>=4.45,<4.50",
+    "accelerate",
+    "mediapipe>=0.10.14",
+    "numpy",
+    "scipy",
+    "pillow>=10",
+    "soundfile",
+    "num2words>=0.5.14",
+]
+
+[project.scripts]
+sesh-edit = "sesh_edit.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sesh_edit"]
