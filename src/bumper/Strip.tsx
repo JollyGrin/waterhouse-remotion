@@ -9,8 +9,9 @@ import { SessionBumper, bumperDuration } from "./SessionBumper";
 // composition itself, offset with a negative Sequence so it shows frame k.
 
 export const BumperStripSchema = z.object({
-  idea: z.enum(["door", "corner", "lamp", "paper"]),
+  idea: z.enum(["door", "corner", "lamp", "paper", "neon", "vhs"]),
   guestName: z.string().nullable(),
+  vhsDate: z.string().optional(),
   step: z.number().int().min(1),
   columns: z.number().int().min(1),
 });
@@ -75,6 +76,7 @@ export const BumperStrip: React.FC<BumperStripProps> = (props) => {
                 <SessionBumper
                   idea={props.idea}
                   guestName={props.guestName}
+                  vhsDate={props.vhsDate}
                   preview
                 />
               </Sequence>

@@ -1,5 +1,13 @@
 import { describe, expect, it } from "bun:test";
 import {
+  dropoutFrames,
+  jaggedTop,
+  neonDropoutCount,
+  neonStrike,
+  rainStreaks,
+  rainY,
+  sweepFront,
+  vhsWobble,
   boil,
   jitter,
   noise,
@@ -101,6 +109,85 @@ describe("pendulum", () => {
       const a = pendulum(apices[i] / 30, 55, k, w);
       const b = pendulum(apices[i - 1] / 30, 55, k, w);
       expect(Math.sign(a)).toBe(-Math.sign(b));
+    }
+  });
+});
+
+describe("neon strike", () => {
+  it("is off before the switch, lit after the window, and drops out 3-5 times", () => {
+    for (let seed = 1; seed < 12; seed++) {
+      expect(neonStrike(seed, 7, 8)).toBe(0);
+      expect(neonStrike(seed, 24, 8)).toBe(1);
+      expect(neonStrike(seed, 60, 8)).toBe(1);
+      const steps = new Set<number>();
+      for (let f = 8; f < 24; f++) if (neonStrike(seed, f, 8) < 1) steps.add(Math.floor((f - 8) / 2));
+      expect(steps.size).toBe(neonDropoutCount(seed));
+      expect(steps.size).toBeGreaterThanOrEqual(3);
+      expect(steps.size).toBeLessThanOrEqual(5);
+      // Never drops out on the last step: it settles lit.
+      expect(neonStrike(seed, 22, 8)).toBe(1);
+    }
+  });
+  it("holds a dropout for two frames", () => {
+    for (let f = 8; f < 24; f += 2) expect(neonStrike(3, f, 8)).toBe(neonStrike(3, f + 1, 8));
+  });
+});
+
+describe("rain", () => {
+  it("spreads seeded streaks across the width and falls on twos", () => {
+    const streaks = rainStreaks(50, 7, 1920);
+    expect(streaks).toHaveLength(50);
+    expect(streaks.some((s) => s.x < 400)).toBe(true);
+    expect(streaks.some((s) => s.x > 1500)).toBe(true);
+    const s = streaks[0];
+    expect(rainY(s, 10, 1080)).toBe(rainY(s, 11, 1080));
+    expect(rainY(s, 12, 1080)).not.toBe(rainY(s, 10, 1080));
+    for (let f = 0; f < 200; f++) {
+      const y = rainY(s, f, 1080);
+      expect(y).toBeGreaterThanOrEqual(-80);
+      expect(y).toBeLessThan(1080 + 80);
+    }
+  });
+});
+
+describe("vhs", () => {
+  it("wobbles within the amplitude and differs by row and frame", () => {
+    for (let y = 0; y < 1080; y += 37) {
+      expect(Math.abs(vhsWobble(y, 10, 3))).toBeLessThanOrEqual(3);
+    }
+    expect(vhsWobble(100, 10, 3)).not.toBe(vhsWobble(400, 10, 3));
+    expect(vhsWobble(100, 10, 3)).not.toBe(vhsWobble(100, 11, 3));
+  });
+  it("drops out every ~15 frames", () => {
+    const frames = dropoutFrames(5, 40, 100);
+    expect(frames.length).toBeGreaterThanOrEqual(3);
+    for (let i = 1; i < frames.length; i++) {
+      expect(frames[i] - frames[i - 1]).toBeGreaterThanOrEqual(11);
+      expect(frames[i] - frames[i - 1]).toBeLessThanOrEqual(19);
+    }
+    expect(frames[0]).toBeGreaterThanOrEqual(40);
+    expect(frames[frames.length - 1]).toBeLessThan(100);
+  });
+  it("sweeps the front to the top in three pulses", () => {
+    expect(sweepFront(99, 100, 3, 6, 1080)).toBe(1080);
+    expect(sweepFront(106, 100, 3, 6, 1080)).toBeCloseTo(720, 0);
+    expect(sweepFront(112, 100, 3, 6, 1080)).toBeCloseTo(360, 0);
+    expect(sweepFront(118, 100, 3, 6, 1080)).toBe(0);
+    expect(sweepFront(130, 100, 3, 6, 1080)).toBe(0);
+    let prev = 1080;
+    for (let f = 100; f <= 118; f++) {
+      const y = sweepFront(f, 100, 3, 6, 1080);
+      expect(y).toBeLessThanOrEqual(prev);
+      prev = y;
+    }
+  });
+  it("makes a jagged clip that never dips below the front by more than amp", () => {
+    const poly = jaggedTop(1920, 500, 1, 7, 48, 10);
+    const ys = poly.split(" ").slice(2).map((p) => Number(p.split(",")[1]));
+    expect(ys.length).toBeGreaterThan(30);
+    for (const y of ys) {
+      expect(y).toBeGreaterThanOrEqual(490);
+      expect(y).toBeLessThanOrEqual(510);
     }
   });
 });

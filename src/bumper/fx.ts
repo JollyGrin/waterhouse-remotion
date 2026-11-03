@@ -114,3 +114,119 @@ export function pendulumApexFrames(
   }
   return out;
 }
+
+// --- Round 3: neon and VHS ---
+
+/**
+ * A neon tube striking: from `onFrame` the tube tries to light and drops
+ * out `dropouts` times (3-5, seeded) during the first `window` frames,
+ * stepped on twos, then holds. Returns the tube's brightness: 1 lit, a dim
+ * ember during a dropout, 0 before the switch.
+ */
+export function neonStrike(
+  seed: number,
+  frame: number,
+  onFrame: number,
+  window = 16,
+  ember = 0.12,
+): number {
+  if (frame < onFrame) return 0;
+  const t = frame - onFrame;
+  if (t >= window) return 1;
+  const steps = Math.floor(window / 2);
+  const count = 3 + Math.floor(((noise(seed, 0) + 1) / 2) * 3); // 3..5
+  const step = Math.floor(t / 2);
+  // The dropouts are the `count` steps with the highest noise, so the tube
+  // always settles lit at the end of the window.
+  const ranked = Array.from({ length: steps - 1 }, (_, i) => i).sort(
+    (a, b) => noise(seed + 1, b) - noise(seed + 1, a),
+  );
+  return ranked.indexOf(step) !== -1 && ranked.indexOf(step) < count ? ember : 1;
+}
+
+/** Number of dropout steps `neonStrike` will use for a seed (for tests). */
+export function neonDropoutCount(seed: number): number {
+  return 3 + Math.floor(((noise(seed, 0) + 1) / 2) * 3);
+}
+
+export interface RainStreak {
+  x: number;
+  phase: number;
+  speed: number;
+  len: number;
+}
+
+/** `count` seeded rain streaks for a w x h frame; positions via rainY. */
+export function rainStreaks(count: number, seed: number, w: number): RainStreak[] {
+  const out: RainStreak[] = [];
+  for (let i = 0; i < count; i++) {
+    out.push({
+      x: ((noise(seed, i) + 1) / 2) * (w + 200) - 100,
+      phase: ((noise(seed + 1, i) + 1) / 2) * 2000,
+      speed: 36 + ((noise(seed + 2, i) + 1) / 2) * 18,
+      len: 30 + ((noise(seed + 3, i) + 1) / 2) * 34,
+    });
+  }
+  return out;
+}
+
+/** The streak's top y at `frame`, stepped on twos, wrapping over h. */
+export function rainY(s: RainStreak, frame: number, h: number): number {
+  const span = h + 160;
+  return ((onTwos(frame) * s.speed + s.phase) % span) - 80;
+}
+
+/**
+ * VHS tape wobble: the horizontal offset of the row at `y`, a slow sine
+ * down the picture plus a faster ripple, `amp` px peak.
+ */
+export function vhsWobble(y: number, frame: number, amp: number): number {
+  return (
+    amp * 0.7 * Math.sin(y / 140 + frame * 0.33) +
+    amp * 0.3 * Math.sin(y / 23 - frame * 0.9)
+  );
+}
+
+/**
+ * Seeded dropout frames: one every ~`every` frames (+-4), from `from` to
+ * `until`. Each is a one-frame white streak at a seeded row.
+ */
+export function dropoutFrames(seed: number, from: number, until: number, every = 15): number[] {
+  const out: number[] = [];
+  let f = from + Math.round(((noise(seed, 0) + 1) / 2) * every);
+  let i = 1;
+  while (f < until) {
+    out.push(f);
+    f += every + Math.round(noise(seed, i++) * 4);
+  }
+  return out;
+}
+
+/**
+ * The front of the VHS lock-in: `sweeps` wipes bottom to top, each taking
+ * `len` frames and one equal share of `h`, eased out so each reads as its
+ * own pulse. Returns the y above which the picture still exists (h before
+ * the first sweep, 0 after the last).
+ */
+export function sweepFront(frame: number, start: number, sweeps: number, len: number, h: number): number {
+  if (frame < start) return h;
+  const k = Math.min(sweeps - 1, Math.floor((frame - start) / len));
+  const t = Math.min(1, (frame - start - k * len) / len);
+  const eased = 1 - Math.pow(1 - t, 3);
+  const share = h / sweeps;
+  return Math.max(0, h - share * k - share * eased);
+}
+
+/**
+ * A jagged horizontal edge for a clip polygon: points along y = `front`
+ * every `step` px, pushed up or down by up to `amp`, re-seeded per frame.
+ * Returned as the polygon for the region ABOVE the edge (0..front).
+ */
+export function jaggedTop(w: number, front: number, seed: number, frame: number, step = 48, amp = 10): string {
+  const pts: string[] = ["0,0", `${w},0`];
+  for (let x = w; x >= 0; x -= step) {
+    const y = Math.max(0, front + noise(seed + frame, Math.round(x / step)) * amp);
+    pts.push(`${x},${y.toFixed(1)}`);
+  }
+  return pts.join(" ");
+}

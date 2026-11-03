@@ -197,6 +197,149 @@ export function hum(seconds: number): Float32Array {
   return fade(lowpass(out, 1800), 0.4, 0.3);
 }
 
+/** Seeded white noise, `seconds` long, peak +-1. */
+export function whiteNoise(seconds: number, seed: number): Float32Array {
+  const rng = makeRng(seed);
+  const n = Math.floor(seconds * SR);
+  const out = new Float32Array(n);
+  for (let i = 0; i < n; i++) out[i] = rng() * 2 - 1;
+  return out;
+}
+
+/** Multiply by a per-sample envelope function of time in seconds. */
+export function envelope(x: Float32Array, fn: (t: number) => number): Float32Array {
+  const out = new Float32Array(x.length);
+  for (let i = 0; i < x.length; i++) out[i] = x[i] * fn(i / SR);
+  return out;
+}
+
+/** Sum any number of buffers (zero-padded to the longest). */
+export function mix(...parts: Float32Array[]): Float32Array {
+  const n = Math.max(...parts.map((p) => p.length));
+  const out = new Float32Array(n);
+  for (const p of parts) for (let i = 0; i < p.length; i++) out[i] += p[i];
+  return out;
+}
+
+/**
+ * Rain on a street: noise band-limited to 400 Hz - 5 kHz with a slow,
+ * seeded wander in level, so it breathes instead of sitting flat.
+ */
+export function rain(seconds: number): Float32Array {
+  const base = highpass(lowpass(whiteNoise(seconds, 21), 5000, 2), 400);
+  const rng = makeRng(22);
+  const knots: number[] = [];
+  for (let i = 0; i < seconds * 4 + 2; i++) knots.push(0.75 + rng() * 0.25);
+  return fade(
+    envelope(base, (t) => {
+      const k = t * 4;
+      const i = Math.floor(k);
+      const a = knots[i] ?? 1;
+      const b = knots[i + 1] ?? a;
+      return a + (b - a) * (k - i);
+    }),
+    0.3,
+    0.3,
+  );
+}
+
+/**
+ * A neon transformer's buzz: 60 Hz with harsh odd harmonics (a clipped
+ * sawtooth, not the lamp's gentle hum), a 120 Hz throb, and crackle: short
+ * seeded noise bursts, a few per second.
+ */
+export function buzz(seconds: number): Float32Array {
+  const n = Math.floor(seconds * SR);
+  const out = new Float32Array(n);
+  const rng = makeRng(31);
+  const bursts: number[] = [];
+  for (let t = 0.1; t < seconds; t += 0.12 + rng() * 0.35) bursts.push(t);
+  for (let i = 0; i < n; i++) {
+    const t = i / SR;
+    let v = 0;
+    for (let h = 1; h <= 9; h += 2) v += Math.sin(2 * Math.PI * 60 * h * t) / h;
+    v = Math.max(-0.6, Math.min(0.6, v * 1.6));
+    const throb = 1 + 0.25 * Math.sin(2 * Math.PI * 120 * t);
+    out[i] = v * throb * 0.5;
+  }
+  const crackle = whiteNoise(seconds, 32);
+  for (let i = 0; i < n; i++) {
+    const t = i / SR;
+    let g = 0;
+    for (const b of bursts) {
+      const d = t - b;
+      if (d >= 0 && d < 0.012) g = Math.max(g, 1 - d / 0.012);
+    }
+    out[i] += crackle[i] * g * 0.5;
+  }
+  return fade(lowpass(out, 3500), 0.02, 0.05);
+}
+
+/** The tick of a tube striking: a 12 ms noise burst with a bright edge. */
+export function neonTick(): Float32Array {
+  return fade(
+    envelope(highpass(whiteNoise(0.04, 41), 1800), (t) => Math.exp(-t * 140)),
+    0.0005,
+    0.01,
+  );
+}
+
+/** A raindrop hitting the puddle: a short chirp sliding down, 1.6 kHz to 500 Hz. */
+export function drip(): Float32Array {
+  const seconds = 0.11;
+  const n = Math.floor(seconds * SR);
+  const out = new Float32Array(n);
+  let phase = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / SR;
+    const hz = 1600 * Math.pow(500 / 1600, t / seconds);
+    phase += (2 * Math.PI * hz) / SR;
+    out[i] = Math.sin(phase) * Math.exp(-t * 32);
+  }
+  return fade(out, 0.001, 0.02);
+}
+
+/** Tape hiss: noise 300 Hz - 6 kHz with a faint 50 Hz mains buzz under it. */
+export function hiss(seconds: number): Float32Array {
+  const h = highpass(lowpass(whiteNoise(seconds, 51), 6000, 2), 300);
+  const n = h.length;
+  for (let i = 0; i < n; i++) h[i] += 0.03 * Math.sin((2 * Math.PI * 50 * i) / SR);
+  return fade(h, 0.05, 0.2);
+}
+
+/**
+ * A VCR motor: a 90 -> 150 Hz tone spinning up over the first 0.25 s with
+ * a 1/3 sub-harmonic rattle and a dull noise bed; `seek` adds a slow
+ * pitch wobble, as the heads hunt for the track.
+ */
+export function motor(seconds: number, seek = false): Float32Array {
+  const n = Math.floor(seconds * SR);
+  const out = new Float32Array(n);
+  let phase = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / SR;
+    const spin = Math.min(1, t / 0.25);
+    const wobble = seek ? 1 + 0.18 * Math.sin(2 * Math.PI * 2.3 * t) : 1;
+    const hz = (90 + 60 * spin) * wobble;
+    phase += (2 * Math.PI * hz) / SR;
+    out[i] = (Math.sin(phase) + 0.4 * Math.sin(phase / 3) + 0.25 * Math.sin(phase * 2)) * 0.35;
+  }
+  const bed = lowpass(whiteNoise(seconds, seek ? 62 : 61), 900, 2);
+  return fade(mix(out, envelope(bed, () => 0.6)), 0.03, 0.15);
+}
+
+/** TV snow: full-band noise with a 15.6 kHz line whistle, crushed a little. */
+export function snow(seconds: number): Float32Array {
+  const x = whiteNoise(seconds, 71);
+  const n = x.length;
+  for (let i = 0; i < n; i++) {
+    const t = i / SR;
+    const v = x[i] * 0.8 + 0.06 * Math.sin(2 * Math.PI * 15625 * t);
+    x[i] = Math.max(-0.7, Math.min(0.7, v));
+  }
+  return fade(x, 0.01, 0.05);
+}
+
 const PULLUP = "public/audio/pullup";
 const RECAP = "public/audio/recap";
 const KENNEY = "public/audio/pullup/kenney";
@@ -242,6 +385,25 @@ function build() {
     "rustle",
     normalize(fade(highpass(lowpass(decode(`${PULLUP}/whoosh.wav`), 1200, 2), 120), 0.01, 0.05), -14),
   );
+
+  // --- Round 3 ---
+
+  // Neon: rain on the street, the transformer, the tube ticks, a drip.
+  out("rain", normalize(rain(4.5), -20));
+  out("buzz", normalize(buzz(3.2), -18));
+  out("neon-tick", normalize(neonTick(), -10));
+  out("drip", normalize(drip(), -16));
+
+  // VHS: the cassette seating, the motor, tape hiss, the heads hunting,
+  // snow.
+  out(
+    "clunk",
+    normalize(fade(lowpass(resample(trimLeadingSilence(decode(`${KENNEY}/impact-soft-heavy.ogg`)), 1.1), 900, 2), 0.001, 0.04), -6),
+  );
+  out("motor", normalize(motor(1.2), -16));
+  out("hiss", normalize(hiss(3.5), -24));
+  out("seek", normalize(motor(0.9, true), -14));
+  out("snow", normalize(snow(0.5), -12));
 }
 
 if (/gen-audio-bumper\.ts$/.test(process.argv[1] ?? "")) build();

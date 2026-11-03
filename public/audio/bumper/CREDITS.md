@@ -20,8 +20,18 @@ see their own `CREDITS.md`.
 | `thump.wav` | `../pullup/kenney/impact-soft-heavy.ogg` (Kenney Impact Sounds, CC0) | slowed to 0.7×, low-passed 320 Hz twice, −6 dBFS | the lamp blow-out at f84 |
 | `tap.wav` | `../recap/tick.wav` (Kenney Interface Sounds `tick_001`, CC0) | an octave down, low-passed 2.5 kHz twice, −14 dBFS | paper: each piece landing, the scrap, the hand's hesitations |
 | `rustle.wav` | `../pullup/whoosh.wav` (synthesised sweep) | low-passed 1.2 kHz twice, high-passed 120 Hz, −14 dBFS | paper: the strip push, the hand entering, the lift |
+| `rain.wav` | synthesised | seeded noise 400 Hz – 5 kHz, level wandering slowly between knots, 4.5 s, −20 dBFS | neon: the street, under everything until the water clears |
+| `buzz.wav` | synthesised | 60 Hz clipped sawtooth (odd harmonics to the 9th), 120 Hz throb, seeded 12 ms crackle bursts, low-passed 3.5 kHz, 3.2 s, −18 dBFS | neon: the transformer, louder with every tube |
+| `neon-tick.wav` | synthesised | 12 ms noise burst high-passed 1.8 kHz, −10 dBFS | neon: each tube striking, each dropout |
+| `drip.wav` | synthesised | 110 ms sine chirp 1.6 kHz → 500 Hz, −16 dBFS | neon: each raindrop hitting the puddle |
+| `clunk.wav` | `../pullup/kenney/impact-soft-heavy.ogg` (Kenney Impact Sounds, CC0) | 1.1× rate, low-passed 900 Hz twice, −6 dBFS | vhs: the cassette seating |
+| `motor.wav` | synthesised | 90 → 150 Hz tone spinning up over 0.25 s with a sub-harmonic rattle and a dull noise bed, 1.2 s, −16 dBFS | vhs: the loading motor |
+| `hiss.wav` | synthesised | seeded noise 300 Hz – 6 kHz with a faint 50 Hz mains buzz, 3.5 s, −24 dBFS | vhs: tape hiss from PLAY to the lock |
+| `seek.wav` | synthesised | the motor with a 2.3 Hz pitch wobble, 0.9 s, −14 dBFS | vhs: the heads hunting during the roll |
+| `snow.wav` | synthesised | full-band noise with a 15.6 kHz line whistle, soft-clipped, 0.5 s, −12 dBFS | vhs: the snow burst |
 
 The door also uses, unchanged: `../pullup/thud.wav` (knocks), `../recap/slam.wav`
 (the slam), `../recap/tick.wav` (the name), `../recap/whoosh.wav` (the push, at
 half speed). The lamp uses `../pullup/presence.wav` (room tone, quiet) and
-`../pullup/click.wav` (the switch).
+`../pullup/click.wav` (the switch). The VHS uses `../pullup/presence.wav`
+(room tone) and `../pullup/click.wav` (PLAY, and each tracking sweep).
