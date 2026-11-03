@@ -10,6 +10,7 @@
  *   bun run render:bumper --idea door --idle             # just the idle state, loopable
  *   bun run render:bumper --idea corner --strip          # also the frame strip into docs/
  *   bun run render:bumper --idea door --matte            # Track Matte fallback (opaque mp4)
+ *   bun run render:bumper --idea door --format prores    # out/Bumper-door.mov for editing
  *
  * --idea    door | corner (required).
  * --guest   a name for the card; without it the card reads "with Denzo".
@@ -17,6 +18,10 @@
  *           to the corner, no hit. Written as out/Bumper-{idea}-idle.webm.
  * --strip   additionally render docs/bumper-{idea}-frames.png: every 10th
  *           frame over a checkerboard, for the PR and the README.
+ * --format  webm (default): VP9 with alpha, for OBS. prores: ProRes 4444
+ *           with alpha (yuva444p10le) as out/Bumper-{idea}.mov, for cutting
+ *           the bumper into edited session videos - NLEs rarely take VP9
+ *           alpha.
  * --matte   instead of the alpha webm, render out/Bumper-{idea}-matte.mp4:
  *           3840x1080, the bumper over black on the left and its alpha as a
  *           luma matte on the right, for OBS's Track Matte stinger mode.
@@ -30,6 +35,7 @@ import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { bumperOutName } from "../src/bumper/SessionBumper";
 
 type Idea = "door" | "corner";
+type Format = "webm" | "prores";
 
 interface Args {
   idea: Idea;
@@ -37,12 +43,37 @@ interface Args {
   idle: boolean;
   strip: boolean;
   matte: boolean;
+  format: Format;
 }
+
+// Codec flags and what ffprobe must report for a real alpha channel.
+const FORMATS: Record<
+  Format,
+  { ext: string; flags: string[]; codec: string; pixFmt: string }
+> = {
+  webm: {
+    ext: "webm",
+    flags: ["--codec=vp9", "--pixel-format=yuva420p", "--image-format=png"],
+    codec: "vp9",
+    pixFmt: "yuva420p",
+  },
+  prores: {
+    ext: "mov",
+    flags: [
+      "--codec=prores",
+      "--prores-profile=4444",
+      "--pixel-format=yuva444p10le",
+      "--image-format=png",
+    ],
+    codec: "prores",
+    pixFmt: "yuva444p10le",
+  },
+};
 
 function usage(message: string): never {
   console.error(`${message}\n`);
   console.error(
-    'Usage: bun run render:bumper --idea door|corner [--guest "Name"] [--idle] [--strip] [--matte]',
+    'Usage: bun run render:bumper --idea door|corner [--guest "Name"] [--idle] [--strip] [--matte] [--format webm|prores]',
   );
   process.exit(1);
 }
@@ -61,12 +92,17 @@ export function parseArgs(argv: string[]): Args {
     usage(`--idea must be "door" or "corner", got "${idea ?? ""}".`);
   }
   const guest = value("--guest");
+  const format = value("--format") ?? "webm";
+  if (format !== "webm" && format !== "prores") {
+    usage(`--format must be "webm" or "prores", got "${format}".`);
+  }
   return {
     idea,
     guest: guest && guest.trim() ? guest.trim() : null,
     idle: argv.indexOf("--idle") !== -1,
     strip: argv.indexOf("--strip") !== -1,
     matte: argv.indexOf("--matte") !== -1,
+    format,
   };
 }
 
@@ -144,8 +180,15 @@ export function probeVideo(file: string): Probe | null {
   };
 }
 
-export const hasAlpha = (p: Probe) =>
-  p.codec === "vp9" && (p.pixFmt === "yuva420p" || p.alphaMode);
+/**
+ * ProRes 4444 reports an alpha pixel format directly (ffmpeg decodes it as
+ * yuva444p12le, whatever bit depth it was encoded at); VP9 may only tag it.
+ */
+export const hasAlpha = (p: Probe, format: Format = "webm") =>
+  p.codec === FORMATS[format].codec &&
+  (format === "prores"
+    ? p.pixFmt.indexOf("yuva444p") === 0
+    : p.pixFmt === FORMATS[format].pixFmt || p.alphaMode);
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -174,7 +217,8 @@ async function main() {
     return;
   }
 
-  const outPath = `out/${stem}.webm`;
+  const format = FORMATS[args.format];
+  const outPath = `out/${stem}.${format.ext}`;
 
   // The composition's calculateMetadata already defaults to these, but
   // remotion.config.ts sets jpeg frames for the other clips and config
@@ -186,17 +230,15 @@ async function main() {
     "SessionBumper",
     outPath,
     `--props=${propsPath}`,
-    "--codec=vp9",
-    "--pixel-format=yuva420p",
-    "--image-format=png",
+    ...format.flags,
   ]);
 
   const probe = probeVideo(outPath);
   if (!probe) {
     console.log("\n(ffprobe not found - alpha not verified.)");
-  } else if (!hasAlpha(probe)) {
+  } else if (!hasAlpha(probe, args.format)) {
     throw new Error(
-      `${outPath} is ${probe.codec}/${probe.pixFmt}, expected vp9/yuva420p - no alpha channel.`,
+      `${outPath} is ${probe.codec}/${probe.pixFmt}, expected ${format.codec}/${format.pixFmt} - no alpha channel.`,
     );
   } else {
     console.log(

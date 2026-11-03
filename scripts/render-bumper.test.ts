@@ -9,7 +9,14 @@ describe("parseArgs (bumper)", () => {
       idle: true,
       strip: true,
       matte: false,
+      format: "webm",
     });
+  });
+
+  it("takes --format prores", () => {
+    expect(parseArgs(["--idea", "door", "--format", "prores"]).format).toBe(
+      "prores",
+    );
   });
 
   it("trims the guest and drops an empty one", () => {
@@ -31,6 +38,27 @@ describe("hasAlpha", () => {
     expect(
       hasAlpha({ codec: "vp9", pixFmt: "yuv420p", alphaMode: true }),
     ).toBe(true);
+  });
+
+  it("accepts ProRes 4444 with alpha", () => {
+    expect(
+      hasAlpha(
+        { codec: "prores", pixFmt: "yuva444p10le", alphaMode: false },
+        "prores",
+      ),
+    ).toBe(true);
+    expect(
+      hasAlpha(
+        { codec: "prores", pixFmt: "yuva444p12le", alphaMode: false },
+        "prores",
+      ),
+    ).toBe(true);
+    expect(
+      hasAlpha(
+        { codec: "prores", pixFmt: "yuv422p10le", alphaMode: false },
+        "prores",
+      ),
+    ).toBe(false);
   });
 
   it("rejects a plain vp9", () => {

@@ -155,13 +155,16 @@ bun run render:bumper --idea door --guest "Duncen"  # card reads "with Denzo and
 bun run render:bumper --idea door --idle            # out/Bumper-door-idle.webm, loopable
 bun run render:bumper --idea corner --strip         # also docs/bumper-corner-frames.png
 bun run render:bumper --idea door --matte           # out/Bumper-door-matte.mp4, Track Matte fallback
+bun run render:bumper --idea door --format prores   # out/Bumper-door.mov, ProRes 4444 with alpha, for editing
 ```
 
 The only landscape clip: **1920×1080, 30 fps**, rendered as **VP9 webm with
 alpha** (`yuva420p`, png frames, Opus audio). Where the live scene should
 show through, the frame is transparent; nothing is composited in Remotion.
 The script checks the result with ffprobe and fails if the alpha channel is
-missing. Composition `SessionBumper` in `src/bumper/`; the mark is
+missing. For editing (Premiere, DaVinci, CapCut), use the `.mov` from
+`--format prores`: ProRes 4444 keeps the alpha and every NLE takes it,
+which VP9 webm does not. Composition `SessionBumper` in `src/bumper/`; the mark is
 `src/bumper/Logo.tsx`, the four paths of `public/logo.svg` as separate
 pieces.
 
