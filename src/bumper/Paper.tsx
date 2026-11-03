@@ -97,8 +97,9 @@ const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 
 // The hand: a flat silhouette with the index fingertip at the origin and the
 // arm running down-right. A photographed cut-out of Denzo's hand replaces
-// this later; keep the tip at (0,0).
-const HandShape: React.FC<{ fill: string }> = ({ fill }) => (
+// this later; keep the tip at (0,0). The VHS idea holds its cassette with
+// the same hand.
+export const HandShape: React.FC<{ fill: string }> = ({ fill }) => (
   <g fill={fill}>
     <rect x={-24} y={-8} width={48} height={280} rx={24} />
     <ellipse cx={78} cy={340} rx={112} ry={122} />
