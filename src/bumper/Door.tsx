@@ -9,7 +9,13 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
-import { LogoPieces, LOGO_VIEW_H, LOGO_VIEW_W, type Cutout } from "./Logo";
+import {
+  LOGO_PATHS,
+  LOGO_PIECE_BOX,
+  LOGO_VIEW_H,
+  LOGO_VIEW_W,
+  LogoPieces,
+} from "./Logo";
 import {
   HEIGHT,
   INK,
@@ -22,9 +28,10 @@ import {
   withLine,
 } from "./shared";
 
-// Idea 3 - The door. A white card with the small black mark; a door in the
-// house block swings open onto the live scene (alpha 0), then the whole card
-// rushes through the doorway.
+// Idea 3 - The door. A white card with the small black mark; the mark's
+// pillar piece is the door. It swings open on its left edge onto the live
+// scene (alpha 0 where it stood), then the whole card rushes through that
+// doorway.
 
 // --- Timing (30 fps, 105 frames = 3.5 s). Tune beats here. ---
 export const DOOR_DURATION = 105;
@@ -59,19 +66,20 @@ const CAPTION_SIZE = 30;
 const NAME_TOP = CAPTION_TOP + 54;
 const NAME_SIZE = 72;
 
-// The doorway, in logo units, in the lower part of the house block
-// (x 0..348, base y 665). Everything behind it is alpha 0.
-const DOORWAY: Cutout = { x: 112, y: 436, w: 116, h: 230 };
-const DOOR_LEFT = LOGO_LEFT + DOORWAY.x * UNIT;
-const DOOR_TOP = LOGO_TOP + DOORWAY.y * UNIT;
-const DOOR_W = DOORWAY.w * UNIT;
-const DOOR_H = DOORWAY.h * UNIT;
-const LEAF_OUTSET = 0.5;
+// The doorway is the pillar's own silhouette (slanted top and all), so the
+// hole and the leaf are the same path. Its box on the card, in px:
+const PILLAR = LOGO_PIECE_BOX.pillar;
+const DOOR_LEFT = LOGO_LEFT + PILLAR.x * UNIT;
+const DOOR_TOP = LOGO_TOP + PILLAR.y * UNIT;
+const DOOR_W = PILLAR.w * UNIT;
+const DOOR_H = PILLAR.h * UNIT;
 const DOOR_CX = DOOR_LEFT + DOOR_W / 2;
 const DOOR_CY = DOOR_TOP + DOOR_H / 2;
+// The leaf's SVG is cut to the pillar's box; the hinge is the box's left edge.
+const PILLAR_VIEW = `${PILLAR.x} ${PILLAR.y} ${PILLAR.w} ${PILLAR.h}`;
 
 // The scale at which the doorway's edges are outside the frame on every
-// side, plus a little margin. ~58x for a 37 px wide doorway.
+// side, plus a little margin. ~38x for a 57 px wide doorway.
 const ZOOM_MARGIN = 1.04;
 export const ZOOM_SCALE =
   ZOOM_MARGIN *
@@ -166,12 +174,10 @@ export const Door: React.FC<DoorProps> = ({ guestName, idle }) => {
           <defs>
             <mask id="door-card-hole" maskUnits="userSpaceOnUse">
               <rect x={0} y={0} width={WIDTH} height={HEIGHT} fill="#fff" />
-              <rect
-                x={DOOR_LEFT}
-                y={DOOR_TOP}
-                width={DOOR_W}
-                height={DOOR_H}
+              <path
+                d={LOGO_PATHS.pillar}
                 fill="#000"
+                transform={`translate(${LOGO_LEFT} ${LOGO_TOP}) scale(${UNIT})`}
               />
             </mask>
           </defs>
@@ -186,7 +192,7 @@ export const Door: React.FC<DoorProps> = ({ guestName, idle }) => {
           <g transform={`translate(${LOGO_LEFT} ${LOGO_TOP}) scale(${UNIT})`}>
             <LogoPieces
               color={INK}
-              houseCutout={DOORWAY}
+              omit={["pillar"]}
               pieces={{
                 house: {
                   // The peak nods; the base stays on the ground.
@@ -198,21 +204,24 @@ export const Door: React.FC<DoorProps> = ({ guestName, idle }) => {
           </g>
         </svg>
 
-        {/* The door leaf, hinged on its left edge. Half a pixel larger than
-            the opening so the closed door shows no anti-aliased seam. */}
-        <div
+        {/* The door leaf: the pillar itself, hinged on its left edge. */}
+        <svg
+          width={DOOR_W}
+          height={DOOR_H}
+          viewBox={PILLAR_VIEW}
           style={{
             position: "absolute",
-            left: DOOR_LEFT - LEAF_OUTSET,
-            top: DOOR_TOP - LEAF_OUTSET,
-            width: DOOR_W + 2 * LEAF_OUTSET,
-            height: DOOR_H + 2 * LEAF_OUTSET,
-            background: INK,
+            left: DOOR_LEFT,
+            top: DOOR_TOP,
+            display: "block",
+            overflow: "visible",
             transformOrigin: "0% 50%",
             transform: `perspective(800px) rotateY(${doorDeg}deg)`,
             backfaceVisibility: "visible",
           }}
-        />
+        >
+          <path d={LOGO_PATHS.pillar} fill={INK} />
+        </svg>
 
         <div
           style={{

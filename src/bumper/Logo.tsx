@@ -1,4 +1,4 @@
-import React, { useId } from "react";
+import React from "react";
 
 // The Waterhouse mark from public/logo.svg, split into its four paths so the
 // bumpers can move each piece on its own. Coordinates are the SVG's own
@@ -21,6 +21,17 @@ export const LOGO_PATHS: Record<LogoPiece, string> = {
 
 export const LOGO_PIECE_ORDER: LogoPiece[] = ["house", "beamA", "beamB", "pillar"];
 
+/** Bounding boxes in logo units, from the path coordinates. */
+export const LOGO_PIECE_BOX: Record<
+  LogoPiece,
+  { x: number; y: number; w: number; h: number }
+> = {
+  house: { x: 0, y: 2.1, w: 347.9, h: 663.4 },
+  beamA: { x: 379.6, y: 48.7, w: 305.6, h: 238.9 },
+  beamB: { x: 722.2, y: 161.0, w: 277.8, h: 211.9 },
+  pillar: { x: 596.6, y: 398.0, w: 178.6, h: 267.9 },
+};
+
 export interface PieceStyle {
   // CSS transform in the piece's own box (`transform-box: fill-box`).
   transform?: string;
@@ -29,51 +40,27 @@ export interface PieceStyle {
   opacity?: number;
 }
 
-export interface Cutout {
-  // In logo units. The house block is drawn with this rect removed, so
-  // whatever is behind the logo shows through - the door's opening.
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
-
 interface LogoPiecesProps {
   color: string;
   pieces?: Partial<Record<LogoPiece, PieceStyle>>;
-  houseCutout?: Cutout;
+  // Pieces to leave out, when something else draws them (the door leaf).
+  omit?: LogoPiece[];
 }
 
 export const LogoPieces: React.FC<LogoPiecesProps> = ({
   color,
   pieces = {},
-  houseCutout,
+  omit = [],
 }) => {
-  const maskId = useId();
   return (
     <g>
-      {houseCutout ? (
-        <defs>
-          <mask id={maskId} maskUnits="userSpaceOnUse">
-            <rect x={0} y={0} width={LOGO_VIEW_W} height={LOGO_VIEW_H} fill="#fff" />
-            <rect
-              x={houseCutout.x}
-              y={houseCutout.y}
-              width={houseCutout.w}
-              height={houseCutout.h}
-              fill="#000"
-            />
-          </mask>
-        </defs>
-      ) : null}
-      {LOGO_PIECE_ORDER.map((piece) => {
+      {LOGO_PIECE_ORDER.filter((piece) => omit.indexOf(piece) === -1).map((piece) => {
         const s = pieces[piece] ?? {};
         return (
           <path
             key={piece}
             d={LOGO_PATHS[piece]}
             fill={color}
-            mask={piece === "house" && houseCutout ? `url(#${maskId})` : undefined}
             style={{
               transformBox: "fill-box",
               transformOrigin: s.transformOrigin ?? "50% 50%",
