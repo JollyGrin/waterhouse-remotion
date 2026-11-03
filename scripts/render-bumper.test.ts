@@ -13,6 +13,11 @@ describe("parseArgs (bumper)", () => {
     });
   });
 
+  it("accepts the round-2 ideas", () => {
+    expect(parseArgs(["--idea", "lamp"]).idea).toBe("lamp");
+    expect(parseArgs(["--idea", "paper", "--idle"]).idea).toBe("paper");
+  });
+
   it("takes --format prores", () => {
     expect(parseArgs(["--idea", "door", "--format", "prores"]).format).toBe(
       "prores",

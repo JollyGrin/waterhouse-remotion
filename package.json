@@ -39,6 +39,7 @@
     "render:weekly-board": "bun scripts/render-weekly-board.ts",
     "gen:audio": "bun scripts/gen-audio.ts",
     "gen:audio:recap": "bun scripts/gen-audio-recap.ts",
+    "gen:audio:bumper": "bun scripts/gen-audio-bumper.ts",
     "fetch:audience": "bun scripts/fetch-audience.ts",
     "test": "bun test",
     "fetch:kenney": "bun scripts/fetch-kenney.ts"
