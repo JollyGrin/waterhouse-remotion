@@ -17,6 +17,12 @@ import {
   punch,
   shake,
   tornPolygon,
+  faderTravel,
+  flickerOn,
+  frameReaching,
+  musicEnvelope,
+  settleOvershoot,
+  springTrack,
 } from "./fx";
 
 describe("noise", () => {
@@ -189,5 +195,57 @@ describe("vhs", () => {
       expect(y).toBeGreaterThanOrEqual(490);
       expect(y).toBeLessThanOrEqual(510);
     }
+  });
+});
+
+describe("round 4: springTrack", () => {
+  it("sits still on a still target", () => {
+    expect(springTrack(() => 0.5, 60, { damping: 6, stiffness: 100 })).toBeCloseTo(0.5, 6);
+  });
+  it("lags a step, overshoots it, and settles on it", () => {
+    const step = (f: number) => (f >= 10 ? 1 : 0);
+    const cfg = { damping: 6, stiffness: 100 };
+    expect(springTrack(step, 11, cfg)).toBeLessThan(0.3); // lag
+    let peak = 0;
+    for (let f = 10; f < 60; f++) peak = Math.max(peak, springTrack(step, f, cfg));
+    expect(peak).toBeGreaterThan(1.15); // overshoot
+    expect(springTrack(step, 150, cfg)).toBeCloseTo(1, 2); // settled
+  });
+});
+
+describe("round 4: fader helpers", () => {
+  it("travels 0 to 1 with a ramp, then a constant speed", () => {
+    expect(faderTravel(0, 32, 4)).toBe(0);
+    expect(faderTravel(32, 32, 4)).toBe(1);
+    expect(faderTravel(40, 32, 4)).toBe(1);
+    const v1 = faderTravel(20, 32, 4) - faderTravel(19, 32, 4);
+    const v2 = faderTravel(30, 32, 4) - faderTravel(29, 32, 4);
+    expect(v1).toBeCloseTo(v2, 9);
+    expect(faderTravel(2, 32, 4) - faderTravel(1, 32, 4)).toBeLessThan(v1);
+    expect(frameReaching((f) => faderTravel(f, 32, 4), 1, 0, 60)).toBe(32);
+  });
+  it("overshoots by px and is still after 24 frames", () => {
+    expect(settleOvershoot(-1, 4)).toBe(0);
+    expect(settleOvershoot(0, 4)).toBeCloseTo(0, 6);
+    expect(settleOvershoot(2, 4)).toBeCloseTo(4, 6);
+    expect(settleOvershoot(6, 4)).toBeLessThan(0);
+    expect(Math.abs(settleOvershoot(24, 4))).toBeLessThan(0.1);
+  });
+  it("flickers on with exactly three dropouts, then holds", () => {
+    const on: number[] = [];
+    for (let f = 40; f < 70; f++) on.push(flickerOn(9, f, 48, 3, 8));
+    expect(on.slice(0, 8).every((v) => v === 0)).toBe(true);
+    const window = on.slice(8, 16);
+    expect(window.filter((v) => v === 0)).toHaveLength(3);
+    expect(window[7]).toBe(1);
+    expect(on.slice(16).every((v) => v === 1)).toBe(true);
+  });
+  it("gives a music envelope in [0, 1] that peaks on the beat", () => {
+    for (let f = 0; f < 120; f++) {
+      const v = musicEnvelope(5, f);
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThanOrEqual(1);
+    }
+    expect(musicEnvelope(5, 30)).toBeGreaterThan(musicEnvelope(5, 36));
   });
 });

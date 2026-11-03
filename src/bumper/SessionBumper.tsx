@@ -3,6 +3,8 @@ import { z } from "zod";
 import { AbsoluteFill, type CalculateMetadataFunction } from "remotion";
 import { Corner, CORNER_DURATION, CORNER_IDLE_DURATION } from "./Corner";
 import { Door, DOOR_DURATION, DOOR_IDLE_DURATION } from "./Door";
+import { Fader, FADER_DURATION, FADER_IDLE_DURATION } from "./Fader";
+import { Flap, FLAP_DURATION, FLAP_IDLE_DURATION } from "./Flap";
 import { Lamp, LAMP_DURATION, LAMP_IDLE_DURATION } from "./Lamp";
 import { Neon, NEON_DURATION, NEON_IDLE_DURATION } from "./Neon";
 import { Paper, PAPER_DURATION, PAPER_IDLE_DURATION } from "./Paper";
@@ -11,17 +13,18 @@ import { Vhs, VHS_DURATION, VHS_IDLE_DURATION, vhsDateStamp } from "./Vhs";
 // SessionBumper: the OBS stinger that plays before "Waterhouse Sessions with
 // Denzo". 1920 x 1080, 30 fps, rendered as VP9 webm with alpha. Where the
 // live scene shows through, the frame is transparent - nothing is composited
-// here. Six ideas on the same scaffolding; see Door.tsx, Corner.tsx,
-// Lamp.tsx, Paper.tsx, Neon.tsx and Vhs.tsx.
+// here. Eight ideas on the same scaffolding; see Door.tsx, Corner.tsx,
+// Lamp.tsx, Paper.tsx, Neon.tsx, Vhs.tsx, Fader.tsx and Flap.tsx.
 
 export const SessionBumperSchema = z.object({
-  idea: z.enum(["door", "corner", "lamp", "paper", "neon", "vhs"]),
+  idea: z.enum(["door", "corner", "lamp", "paper", "neon", "vhs", "fader", "flap"]),
   // null: "with Denzo"; a name: "with Denzo and <guest>".
   guestName: z.string().nullable(),
   // Render only the idle state (door: open door held; corner: the drift;
   // lamp: the lit mark; paper: the finished sheet; neon: the lit sign in
-  // the rain; vhs: the tape intro), for a loop before the stinger. Changes
-  // the duration.
+  // the rain; vhs: the tape intro; fader: the strip with the fader up;
+  // flap: the finished board), for a loop before the stinger. Changes the
+  // duration.
   idle: z.boolean().optional(),
   // vhs only: the date the VCR burns in, bottom right ("NOV 03 2026"). The
   // render script passes the render date; the Studio shows today.
@@ -34,7 +37,7 @@ export const SessionBumperSchema = z.object({
 export type SessionBumperProps = z.infer<typeof SessionBumperSchema>;
 
 export type BumperIdea = SessionBumperProps["idea"];
-export const BUMPER_IDEAS: BumperIdea[] = ["door", "corner", "lamp", "paper", "neon", "vhs"];
+export const BUMPER_IDEAS: BumperIdea[] = ["door", "corner", "lamp", "paper", "neon", "vhs", "fader", "flap"];
 
 const DURATIONS: Record<BumperIdea, { full: number; idle: number }> = {
   door: { full: DOOR_DURATION, idle: DOOR_IDLE_DURATION },
@@ -43,6 +46,8 @@ const DURATIONS: Record<BumperIdea, { full: number; idle: number }> = {
   paper: { full: PAPER_DURATION, idle: PAPER_IDLE_DURATION },
   neon: { full: NEON_DURATION, idle: NEON_IDLE_DURATION },
   vhs: { full: VHS_DURATION, idle: VHS_IDLE_DURATION },
+  fader: { full: FADER_DURATION, idle: FADER_IDLE_DURATION },
+  flap: { full: FLAP_DURATION, idle: FLAP_IDLE_DURATION },
 };
 
 // Module load, so every frame of one render carries the same stamp.
@@ -107,6 +112,10 @@ export const SessionBumper: React.FC<SessionBumperProps> = ({
         <Neon guestName={guestName} idle={idle} />
       ) : idea === "vhs" ? (
         <Vhs guestName={guestName} idle={idle} date={vhsDate ?? TODAY_STAMP} />
+      ) : idea === "fader" ? (
+        <Fader guestName={guestName} idle={idle} />
+      ) : idea === "flap" ? (
+        <Flap guestName={guestName} idle={idle} />
       ) : (
         <Corner guestName={guestName} idle={idle} />
       )}

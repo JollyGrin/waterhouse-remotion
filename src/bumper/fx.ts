@@ -230,3 +230,104 @@ export function jaggedTop(w: number, front: number, seed: number, frame: number,
   }
   return pts.join(" ");
 }
+
+// --- Round 4: fader and split-flap ---
+
+export interface SpringConfig {
+  damping: number;
+  stiffness: number;
+  mass?: number;
+}
+
+/**
+ * A mass on a spring chasing a moving target: integrated frame by frame
+ * from 0 to `untilFrame` (semi-implicit Euler, 4 substeps), so the output
+ * lags, overshoots and rings like a real meter needle. Deterministic and
+ * cheap (a few hundred steps). Starts at rest on target(0).
+ */
+export function springTrack(
+  target: (frame: number) => number,
+  untilFrame: number,
+  { damping, stiffness, mass = 1 }: SpringConfig,
+  fps = 30,
+): number {
+  let x = target(0);
+  let v = 0;
+  const sub = 4;
+  const dt = 1 / fps / sub;
+  for (let f = 1; f <= untilFrame; f++) {
+    const goal = target(f);
+    for (let s = 0; s < sub; s++) {
+      const a = (stiffness * (goal - x) - damping * v) / mass;
+      v += a * dt;
+      x += v * dt;
+    }
+  }
+  return x;
+}
+
+/**
+ * The thumb overshooting an end stop: a decaying half-sine that peaks at
+ * `px` two frames after `t = 0`, dips back past zero and is still by ~20
+ * frames (what "spring damping 14" looks like on a 4 px throw). 0 before.
+ */
+export function settleOvershoot(t: number, px: number): number {
+  if (t < 0) return 0;
+  const raw = (u: number) => Math.exp(-u / 6) * Math.sin((Math.PI * u) / 4);
+  return (px / raw(2)) * raw(t);
+}
+
+/**
+ * A fader throw with a trapezoid velocity profile: constant acceleration
+ * for `accel` frames, then constant speed, arriving at 1 exactly at
+ * `frames`. 0 before, 1 after.
+ */
+export function faderTravel(t: number, frames: number, accel: number): number {
+  if (t <= 0) return 0;
+  if (t >= frames) return 1;
+  // Distance: accel/2 * v during the ramp, then (frames - accel) * v.
+  const v = 1 / (accel / 2 + (frames - accel));
+  if (t < accel) return (v * t * t) / (2 * accel);
+  return (v * accel) / 2 + v * (t - accel);
+}
+
+/** The first frame at which a travel curve reaches `level` (for the LEDs). */
+export function frameReaching(
+  travel: (frame: number) => number,
+  level: number,
+  from: number,
+  until: number,
+): number {
+  for (let f = from; f <= until; f++) if (travel(f) >= level - 1e-9) return f;
+  return until;
+}
+
+/**
+ * A relay-switched lamp coming on with exactly `dropouts` one-frame
+ * dropouts in its first `window` frames (seeded positions, never the last
+ * frame), then steady. Returns 0 (off), 1 (on).
+ */
+export function flickerOn(seed: number, frame: number, onFrame: number, dropouts = 3, window = 8): number {
+  if (frame < onFrame) return 0;
+  const t = frame - onFrame;
+  if (t >= window - 1) return 1;
+  const ranked = Array.from({ length: window - 1 }, (_, i) => i).sort(
+    (a, b) => noise(seed, b) - noise(seed, a),
+  );
+  return ranked.indexOf(t) < dropouts ? 0 : 1;
+}
+
+/**
+ * A seeded "music" level in [0, 1]: a kick every `beat` frames with a fast
+ * decay, a softer off-beat, and a little noise, like a VU meter watching a
+ * track. Deterministic per frame.
+ */
+export function musicEnvelope(seed: number, frame: number, beat = 15): number {
+  const inBeat = ((frame % beat) + beat) % beat;
+  const kick = Math.exp(-inBeat / 3.2);
+  const off = Math.exp(-(((inBeat + beat / 2) % beat) / 4)) * 0.45;
+  const bar = Math.floor(frame / beat);
+  const accent = 0.85 + 0.15 * ((noise(seed, bar) + 1) / 2);
+  const n = 0.06 * noise(seed + 3, frame);
+  return Math.max(0, Math.min(1, 0.42 + 0.5 * accent * Math.max(kick, off) + n));
+}

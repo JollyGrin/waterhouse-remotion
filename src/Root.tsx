@@ -344,7 +344,7 @@ export const RemotionRoot: React.FC = () => {
         }}
       />
       {/* The Tuesday stream stinger: landscape, VP9 webm with alpha. One
-          registration per idea (door, corner, lamp, paper, neon, vhs) so each is a click
+          registration per idea (door, corner, lamp, paper, neon, vhs, fader, flap) so each is a click
           away; `preview` shows a checkerboard where the live scene will be. */}
       <Composition
         id="SessionBumper"
@@ -357,7 +357,7 @@ export const RemotionRoot: React.FC = () => {
         height={1080}
         defaultProps={defaultBumperProps}
       />
-      {(["corner", "lamp", "paper", "neon", "vhs"] as const).map((idea) => (
+      {(["corner", "lamp", "paper", "neon", "vhs", "fader", "flap"] as const).map((idea) => (
         <Composition
           key={idea}
           id={`SessionBumper${idea[0].toUpperCase()}${idea.slice(1)}`}

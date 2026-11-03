@@ -6,6 +6,8 @@ import { PAPER_BEATS, PAPER_DURATION, PAPER_IDLE_FRAME } from "./Paper";
 import { VHS_BEATS, VHS_DURATION, VHS_IDLE_FRAME, vhsDateStamp } from "./Vhs";
 import { BUMPER_IDEAS, bumperDuration, bumperOutName } from "./SessionBumper";
 import { stripFrames } from "./Strip";
+import { FADER_BEATS, FADER_CLEAR_FRAME, FADER_DURATION, FADER_IDLE_FRAME, LED_FRAMES, cameraScale, dotGrow, dotRing, faderLevel, tickerCol } from "./Fader";
+import { FLAP_BEATS, FLAP_DURATION, FLAP_IDLE_FRAME, boardFront } from "./Flap";
 
 describe("door beats", () => {
   it("has four hits at 120 bpm, 15 frames apart", () => {
@@ -104,9 +106,75 @@ describe("vhs beats", () => {
   });
 });
 
+describe("fader beats", () => {
+  it("clicks the four LEDs on the quarter marks of the throw, pillar at the end stop", () => {
+    expect(FADER_BEATS.leds).toEqual([LED_FRAMES.house, LED_FRAMES.beamA, LED_FRAMES.beamB, LED_FRAMES.pillar]);
+    expect(LED_FRAMES.pillar).toBe(FADER_BEATS.pushEnd);
+    for (let i = 1; i < 4; i++) {
+      const gap = FADER_BEATS.leds[i] - FADER_BEATS.leds[i - 1];
+      expect(gap).toBeGreaterThanOrEqual(7);
+      expect(gap).toBeLessThanOrEqual(9);
+    }
+    expect(faderLevel(FADER_BEATS.push)).toBe(0);
+    expect(faderLevel(LED_FRAMES.house)).toBeGreaterThanOrEqual(0.25);
+    expect(faderLevel(LED_FRAMES.house - 1)).toBeLessThan(0.25);
+    expect(faderLevel(FADER_BEATS.pushEnd)).toBe(1);
+  });
+  it("hand, push, ticker, on air, name, hold, play, zoom, holes, grow, clear in order", () => {
+    const b = FADER_BEATS;
+    const order = [b.hand, b.push, b.pushEnd, b.ticker, b.onAir, b.name, b.hold, b.play, b.zoom, b.holes, b.grow, b.clear];
+    for (let i = 1; i < order.length; i++) expect(order[i]).toBeGreaterThanOrEqual(order[i - 1]);
+    expect(b.holes).toBe(84);
+    expect(FADER_CLEAR_FRAME).toBeLessThanOrEqual(FADER_DURATION);
+    expect(FADER_IDLE_FRAME).toBeGreaterThanOrEqual(b.hold);
+    expect(FADER_IDLE_FRAME).toBeLessThan(b.play);
+  });
+  it("scrolls the ticker in from the right edge and parks it centred by f56", () => {
+    expect(tickerCol(FADER_BEATS.ticker - 1)).toBe(96);
+    expect(tickerCol(FADER_BEATS.ticker + 1)).toBeLessThan(96);
+    expect(tickerCol(56)).toBe(10);
+    expect(tickerCol(70)).toBe(10);
+  });
+  it("pushes to a zoom where a dot is 60-120 px wide, and the holes have merged before the clear", () => {
+    expect(cameraScale(FADER_BEATS.play - 1)).toBeCloseTo(1, 5);
+    const dotPx = 2 * FADER_BEATS.dotR * cameraScale(FADER_CLEAR_FRAME - 1);
+    expect(dotPx).toBeGreaterThanOrEqual(60);
+    expect(dotPx).toBeLessThanOrEqual(120);
+    // Every ring that can be on screen at that zoom has grown past the
+    // half-diagonal of the dot pitch, so no panel is left between dots.
+    const merge = FADER_BEATS.dotPitch / Math.SQRT2;
+    for (let ring = 0; ring <= 12; ring++) {
+      expect(FADER_BEATS.dotR * dotGrow(ring, FADER_CLEAR_FRAME - 1)).toBeGreaterThan(merge);
+    }
+    expect(dotGrow(0, FADER_BEATS.grow - 1)).toBe(1);
+    expect(dotRing(47, 20)).toBe(1);
+    expect(dotRing(0, 0)).toBeGreaterThan(50);
+  });
+});
+
+describe("flap beats", () => {
+  it("mosaic, row 1, fix, hold, exit, clear in order", () => {
+    const b = FLAP_BEATS;
+    const order = [b.mosaic, b.row1, b.fix, b.hold, b.exit, b.clear];
+    for (let i = 1; i < order.length; i++) expect(order[i]).toBeGreaterThanOrEqual(order[i - 1]);
+    expect(b.exit).toBe(84);
+    expect(b.clear).toBe(110);
+    expect(b.clear).toBeLessThanOrEqual(FLAP_DURATION);
+    expect(FLAP_IDLE_FRAME).toBeGreaterThanOrEqual(b.hold);
+    expect(FLAP_IDLE_FRAME).toBeLessThan(b.exit);
+  });
+  it("sweeps the board's far corner before the clear", () => {
+    expect(boardFront(FLAP_BEATS.exit - 1)).toBe(-Infinity);
+    expect(boardFront(FLAP_BEATS.clear - 1)).toBeGreaterThan(1920 + 1080);
+  });
+});
+
 describe("SessionBumper ideas", () => {
-  it("knows all six ideas, their durations and file names", () => {
-    expect(BUMPER_IDEAS).toEqual(["door", "corner", "lamp", "paper", "neon", "vhs"]);
+  it("knows all eight ideas, their durations and file names", () => {
+    expect(BUMPER_IDEAS).toEqual(["door", "corner", "lamp", "paper", "neon", "vhs", "fader", "flap"]);
+    expect(bumperDuration({ idea: "fader" })).toBe(FADER_DURATION);
+    expect(bumperDuration({ idea: "flap" })).toBe(FLAP_DURATION);
+    expect(bumperOutName({ idea: "flap", idle: true })).toBe("Bumper-flap-idle.webm");
     expect(bumperDuration({ idea: "neon" })).toBe(NEON_DURATION);
     expect(bumperDuration({ idea: "vhs" })).toBe(VHS_DURATION);
     expect(bumperOutName({ idea: "vhs", idle: true })).toBe("Bumper-vhs-idle.webm");

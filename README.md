@@ -22,7 +22,7 @@ tokens or `.env` for the recap videos: every API they read is public.
 | **PullUp** | 10 s looping "I'm on tonight, pull up" clip per event. A shared booking - two or more artists on one reservation - gets a single clip led by the event title, with everyone on the bill in the stream window | Artists forward it to friends before a show | `bun run render:pullup` |
 | **WaterhouseSession** | 10 s looping clip for the Tuesday "Waterhouse Sessions" night: the guest and Denzo side by side in the stream window, with the running order ("interview with Denzo, then live set") under it | The guest forwards it to friends before the session | `bun run render:session` (guests from the booking) or `--guest "Duncen"` |
 | **WeeklyLineup** | This week's lineup as a story | Instagram story | `bun run render:weekly` |
-| **SessionBumper** | 3–4 s stinger that plays before the Tuesday stream and opens onto the live scene. Landscape, webm with alpha, six ideas: "door", "corner", "lamp", "paper", "neon" and "vhs" | OBS, as the Stinger transition into "Waterhouse Sessions with Denzo" | `bun run render:bumper --idea door` |
+| **SessionBumper** | 3–4 s stinger that plays before the Tuesday stream and opens onto the live scene. Landscape, webm with alpha, eight ideas: "door", "corner", "lamp", "paper", "neon", "vhs", "fader" and "flap" | OBS, as the Stinger transition into "Waterhouse Sessions with Denzo" | `bun run render:bumper --idea door` |
 
 Output lands in `out/` (gitignored). A clip takes 1–2 minutes to render.
 `docs/` holds the latest rendered examples and frame strips.
@@ -155,6 +155,8 @@ bun run render:bumper --idea lamp                   # out/Bumper-lamp.webm
 bun run render:bumper --idea paper                  # out/Bumper-paper.webm
 bun run render:bumper --idea neon                   # out/Bumper-neon.webm
 bun run render:bumper --idea vhs                    # out/Bumper-vhs.webm (burns in today's date)
+bun run render:bumper --idea fader                  # out/Bumper-fader.webm
+bun run render:bumper --idea flap                   # out/Bumper-flap.webm
 bun run render:bumper --idea door --guest "Duncen"  # card reads "with Denzo and Duncen"
 bun run render:bumper --idea door --idle            # out/Bumper-door-idle.webm, loopable
 bun run render:bumper --idea corner --strip         # also docs/bumper-corner-frames.png
@@ -243,26 +245,33 @@ pieces.
   lit mark with the lamp micro-swaying and the moth circling; paper, the
   finished sheet, boiling on twos; neon, the lit sign held in the rain with
   the rings and beam B's buzz still going; vhs, the tape intro held,
-  wobbling, hissing and dropping out.
+  wobbling, hissing and dropping out; fader, the strip with the fader up,
+  the needle dancing to the music and ON AIR breathing; flap, the finished
+  board with one tile rattling.
 - Timing constants are in one block at the top of `src/bumper/Door.tsx`,
-  `Corner.tsx`, `Lamp.tsx`, `Paper.tsx`, `Neon.tsx` and `Vhs.tsx`; change a frame number there,
-  nothing else needs touching. The corner's drift is solved from the bounce frames so it always
+  `Corner.tsx`, `Lamp.tsx`, `Paper.tsx`, `Neon.tsx`, `Vhs.tsx` and `Fader.tsx`
+  (the split-flap's live in `flap-plan.ts`); change a frame number there,
+  nothing else needs touching. If a split-flap timing changes, re-run
+  `bun run gen:audio:bumper` so the baked clack cascade follows it. The corner's drift is solved from the bounce frames so it always
   lands exactly on the corner frame (`src/bumper/corner-plan.ts`).
 - In the Studio, tick `preview` to see a checkerboard where the scene will
   be; it is never part of a render. `SessionBumperStrip` is the contact sheet
   the `--strip` flag renders.
 - The bumper one-shots (creak, hum, thump, tap, rustle, reversed cymbal;
-  rain, buzz, neon tick, drip; clunk, motor, hiss, seek, snow) are in
+  rain, buzz, neon tick, drip; clunk, motor, hiss, seek, snow; fader,
+  led-click, relay, rise; clack, flap-cascade, fluoro) are in
   `public/audio/bumper/`, derived from the existing kits or synthesised by
   `bun run gen:audio:bumper`; see `public/audio/bumper/CREDITS.md`.
 
 **OBS setup (Stinger transition).** Settings → Transitions → add *Stinger*.
-Video File: `Bumper-door.webm` (or corner / lamp / paper / neon / vhs).
+Video File: `Bumper-door.webm` (or corner / lamp / paper / neon / vhs / fader / flap).
 Transition Point Type: *Frame*; Transition Point: **64** for door (the
 push), **70** for corner, **84** for lamp (the thump, as the white takes
 over), **84** for paper (the grab, before the lift), **100** for neon (the
-puddle has filled the frame, the last ring starts) and **100** for vhs (the
-snow ends, the first tracking sweep) - the frame the reveal starts, so the new
+puddle has filled the frame, the last ring starts), **100** for vhs (the
+snow ends, the first tracking sweep), **84** for fader (the lit dots open
+into the stream as the camera pushes in) and **84** for flap (the first tile
+of the diagonal wave flips to transparent) - the frame the reveal starts, so the new
 scene is already live behind it when the card opens. Audio: the webm carries the sounds on its own track, so set
 Audio Monitoring to *Monitor and Output* if they should reach the stream,
 and Audio Fade Style to *Fade out to transition point*. Leave *Track Matte*
@@ -325,7 +334,7 @@ src/pullup/framing.ts       the portrait/landscape rule for the stream window
 src/WaterhouseSession.tsx   Tuesday session loop (fork of PullUp)
 src/session/plan.ts         calendar slot, guest lookup, running order
 src/WeeklyLineup.tsx        lineup story
-src/bumper/                 SessionBumper: Door/Corner/Lamp/Paper/Neon/Vhs.tsx, Logo.tsx, fx.ts (tests)
+src/bumper/                 SessionBumper: Door/Corner/Lamp/Paper/Neon/Vhs/Fader/Flap.tsx, Logo.tsx, logo-sample.ts, flap-plan.ts, fx.ts (tests)
 src/audience/schema.ts      zod props schemas: the contract between data and video
 src/audience/metrics.ts     every definition above, with tests (bun test)
 src/audience/fixtures/      real-data examples the compositions preview with
