@@ -6,16 +6,20 @@
  * Usage:
  *   bun run render:bumper --idea door
  *   bun run render:bumper --idea corner
+ *   bun run render:bumper --idea lamp
+ *   bun run render:bumper --idea paper
  *   bun run render:bumper --idea door --guest "Duncen"   # "with Denzo and Duncen"
  *   bun run render:bumper --idea door --idle             # just the idle state, loopable
  *   bun run render:bumper --idea corner --strip          # also the frame strip into docs/
  *   bun run render:bumper --idea door --matte            # Track Matte fallback (opaque mp4)
  *   bun run render:bumper --idea door --format prores    # out/Bumper-door.mov for editing
  *
- * --idea    door | corner (required).
+ * --idea    door | corner | lamp | paper (required).
  * --guest   a name for the card; without it the card reads "with Denzo".
- * --idle    door: the open-door card held still (2 s); corner: the drift up
- *           to the corner, no hit. Written as out/Bumper-{idea}-idle.webm.
+ * --idle    door: the open-door card held (2 s, camera drifting); corner:
+ *           the drift up to the corner, no hit; lamp: the lit mark, lamp
+ *           swaying, moth on; paper: the finished sheet, boiling on twos.
+ *           Written as out/Bumper-{idea}-idle.webm.
  * --strip   additionally render docs/bumper-{idea}-frames.png: every 10th
  *           frame over a checkerboard, for the PR and the README.
  * --format  webm (default): VP9 with alpha, for OBS. prores: ProRes 4444
@@ -32,9 +36,13 @@
  */
 
 import { existsSync, mkdirSync, writeFileSync } from "fs";
-import { bumperOutName } from "../src/bumper/SessionBumper";
+import {
+  BUMPER_IDEAS,
+  bumperOutName,
+  type BumperIdea,
+} from "../src/bumper/SessionBumper";
 
-type Idea = "door" | "corner";
+type Idea = BumperIdea;
 type Format = "webm" | "prores";
 
 interface Args {
@@ -73,7 +81,7 @@ const FORMATS: Record<
 function usage(message: string): never {
   console.error(`${message}\n`);
   console.error(
-    'Usage: bun run render:bumper --idea door|corner [--guest "Name"] [--idle] [--strip] [--matte] [--format webm|prores]',
+    'Usage: bun run render:bumper --idea door|corner|lamp|paper [--guest "Name"] [--idle] [--strip] [--matte] [--format webm|prores]',
   );
   process.exit(1);
 }
@@ -87,9 +95,9 @@ export function parseArgs(argv: string[]): Args {
       usage(`${flag} needs a value.`);
     return v;
   };
-  const idea = value("--idea");
-  if (idea !== "door" && idea !== "corner") {
-    usage(`--idea must be "door" or "corner", got "${idea ?? ""}".`);
+  const idea = value("--idea") as Idea | null;
+  if (!idea || BUMPER_IDEAS.indexOf(idea) === -1) {
+    usage(`--idea must be one of ${BUMPER_IDEAS.join(", ")}, got "${idea ?? ""}".`);
   }
   const guest = value("--guest");
   const format = value("--format") ?? "webm";

@@ -343,9 +343,9 @@ export const RemotionRoot: React.FC = () => {
           bedVariant: "b" as const,
         }}
       />
-      {/* The Tuesday stream stinger: landscape, VP9 webm with alpha. Flip
-          `idea` between "door" and "corner"; `preview` shows a checkerboard
-          where the live scene will be. */}
+      {/* The Tuesday stream stinger: landscape, VP9 webm with alpha. One
+          registration per idea (door, corner, lamp, paper) so each is a click
+          away; `preview` shows a checkerboard where the live scene will be. */}
       <Composition
         id="SessionBumper"
         component={SessionBumper}
@@ -357,17 +357,20 @@ export const RemotionRoot: React.FC = () => {
         height={1080}
         defaultProps={defaultBumperProps}
       />
-      <Composition
-        id="SessionBumperCorner"
-        component={SessionBumper}
-        schema={SessionBumperSchema}
-        calculateMetadata={calculateBumperMetadata}
-        durationInFrames={bumperDuration({ idea: "corner" })}
-        fps={30}
-        width={1920}
-        height={1080}
-        defaultProps={{ ...defaultBumperProps, idea: "corner" as const }}
-      />
+      {(["corner", "lamp", "paper"] as const).map((idea) => (
+        <Composition
+          key={idea}
+          id={`SessionBumper${idea[0].toUpperCase()}${idea.slice(1)}`}
+          component={SessionBumper}
+          schema={SessionBumperSchema}
+          calculateMetadata={calculateBumperMetadata}
+          durationInFrames={bumperDuration({ idea })}
+          fps={30}
+          width={1920}
+          height={1080}
+          defaultProps={{ ...defaultBumperProps, idea }}
+        />
+      ))}
       {/* Track Matte fallback: fill on the left, alpha as luma on the right,
           one opaque mp4. Only the duration comes from the bumper metadata. */}
       <Composition

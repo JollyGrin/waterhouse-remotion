@@ -22,7 +22,7 @@ tokens or `.env` for the recap videos: every API they read is public.
 | **PullUp** | 10 s looping "I'm on tonight, pull up" clip per event. A shared booking - two or more artists on one reservation - gets a single clip led by the event title, with everyone on the bill in the stream window | Artists forward it to friends before a show | `bun run render:pullup` |
 | **WaterhouseSession** | 10 s looping clip for the Tuesday "Waterhouse Sessions" night: the guest and Denzo side by side in the stream window, with the running order ("interview with Denzo, then live set") under it | The guest forwards it to friends before the session | `bun run render:session` (guests from the booking) or `--guest "Duncen"` |
 | **WeeklyLineup** | This week's lineup as a story | Instagram story | `bun run render:weekly` |
-| **SessionBumper** | 3–4 s stinger that plays before the Tuesday stream and opens onto the live scene. Landscape, webm with alpha, two ideas: "door" and "corner" | OBS, as the Stinger transition into "Waterhouse Sessions with Denzo" | `bun run render:bumper --idea door` |
+| **SessionBumper** | 3–4 s stinger that plays before the Tuesday stream and opens onto the live scene. Landscape, webm with alpha, four ideas: "door", "corner", "lamp" and "paper" | OBS, as the Stinger transition into "Waterhouse Sessions with Denzo" | `bun run render:bumper --idea door` |
 
 Output lands in `out/` (gitignored). A clip takes 1–2 minutes to render.
 `docs/` holds the latest rendered examples and frame strips.
@@ -151,6 +151,8 @@ unchanged.
 ```
 bun run render:bumper --idea door                   # out/Bumper-door.webm
 bun run render:bumper --idea corner                 # out/Bumper-corner.webm
+bun run render:bumper --idea lamp                   # out/Bumper-lamp.webm
+bun run render:bumper --idea paper                  # out/Bumper-paper.webm
 bun run render:bumper --idea door --guest "Duncen"  # card reads "with Denzo and Duncen"
 bun run render:bumper --idea door --idle            # out/Bumper-door-idle.webm, loopable
 bun run render:bumper --idea corner --strip         # also docs/bumper-corner-frames.png
@@ -168,32 +170,64 @@ which VP9 webm does not. Composition `SessionBumper` in `src/bumper/`; the mark 
 `src/bumper/Logo.tsx`, the four paths of `public/logo.svg` as separate
 pieces.
 
-- **door** (105 frames, 3.5 s): white card, small black mark, two knocks, the
-  roof nods, a door in the house block swings open onto the live scene,
-  "with Denzo" fades in, then the whole card rushes through the doorway.
-  Fully transparent from f96.
+- **door** (120 frames, 4 s): white paper card, small black mark, a
+  hand-held camera (slow drift, half a degree of roll, a punch-in and shake
+  on every hit). Someone's shadow grows under the pillar door, knock knock,
+  the pillar swings open on its hinge onto the live scene with a warm wedge
+  of room light spilling from it, slams shut, holds six frames, opens fully;
+  the house jolts, the roof wobbles and the type bounces a frame or two
+  after every hinge move. "with Denzo" cuts in on the beat, a reversed cymbal
+  swells, and the whole card rushes through the doorway with a touch of blur.
+  Paper grain, 1 px red/cyan misregistration on the type, edges that boil
+  every two frames. The sounds sit on a 120 bpm grid (`BEAT_GRID` at the top
+  of `Door.tsx`). Fully transparent from f112.
 - **corner** (115 frames, 3.8 s): black card, the lockup drifts and bounces
   (lime, then purple, then white), lands dead in the top-left corner at f46,
   one white flash, "with Denzo" cuts in, the glass cracks from the corner and
   the panes fall away onto the live scene, the mark's pane last. Fully
   transparent from f100.
+- **lamp** (110 frames, 3.7 s): black. A click, and a work lamp on a cord
+  swings in from the right as a damped pendulum, settling by f50; its cone
+  is the only light, so the white mark and the type exist only where it
+  falls. The cord creaks at every apex, a moth circles the bulb, the bulb
+  flickers. "WATERHOUSE SESSIONS / with Denzo" fade up inside the cone, a
+  hum starts, then the bulb turns to camera (f72–84): the cone becomes a
+  growing disc, blooms, and blows the frame out to white by f90. The white
+  fades to the live scene f90–104. Fully transparent from f104.
+- **paper** (115 frames, 3.8 s): a camera looking straight down at a sheet
+  of warm paper, everything on twos with a pixel of jitter, like stop
+  motion. The four pieces of the mark drop in as black card 8 frames apart
+  (house, beam A, beam B, pillar), shadows tightening as they land, each
+  with its own small tilt; a printed strip is pushed in from the right and a
+  torn scrap reading "with Denzo" is dropped on it. A flat hand (a
+  placeholder silhouette; a cut-out of Denzo's real hand comes later)
+  slides in, flicks the pillar open (the live scene is under the sheet),
+  hesitates twice, pinches the bottom-right corner and lifts the whole sheet
+  off the top right, its shadow growing and detaching. Fully transparent
+  from f108.
 - `--idle` renders the state to loop before the stinger: door, the open-door
-  card held still for 2 s (the scene already shows through the doorway);
-  corner, the drift up to the corner (f0–46; it restarts from the centre, so
-  it is a cut, not a seamless loop).
-- Timing constants are in one block at the top of `src/bumper/Door.tsx` and
-  `src/bumper/Corner.tsx`; change a frame number there, nothing else needs
-  touching. The corner's drift is solved from the bounce frames so it always
+  card held for 2 s with the camera still drifting (the scene already shows
+  through the doorway); corner, the drift up to the corner (f0–46; it
+  restarts from the centre, so it is a cut, not a seamless loop); lamp, the
+  lit mark with the lamp micro-swaying and the moth circling; paper, the
+  finished sheet, boiling on twos.
+- Timing constants are in one block at the top of `src/bumper/Door.tsx`,
+  `Corner.tsx`, `Lamp.tsx` and `Paper.tsx`; change a frame number there,
+  nothing else needs touching. The corner's drift is solved from the bounce frames so it always
   lands exactly on the corner frame (`src/bumper/corner-plan.ts`).
 - In the Studio, tick `preview` to see a checkerboard where the scene will
   be; it is never part of a render. `SessionBumperStrip` is the contact sheet
   the `--strip` flag renders.
+- The bumper one-shots (creak, hum, thump, tap, rustle, reversed cymbal) are
+  in `public/audio/bumper/`, derived from the existing kits by
+  `bun run gen:audio:bumper`; see `public/audio/bumper/CREDITS.md`.
 
 **OBS setup (Stinger transition).** Settings → Transitions → add *Stinger*.
-Video File: `Bumper-door.webm` (or `Bumper-corner.webm`). Transition Point
-Type: *Frame*; Transition Point: **40** for door, **70** for corner (the
-frame the reveal starts, so the new scene is already live behind it when the
-card opens). Audio: the webm carries the sounds on its own track, so set
+Video File: `Bumper-door.webm` (or corner / lamp / paper). Transition Point
+Type: *Frame*; Transition Point: **64** for door (the push), **70** for
+corner, **84** for lamp (the thump, as the white takes over) and **84** for
+paper (the grab, before the lift) - the frame the reveal starts, so the new
+scene is already live behind it when the card opens. Audio: the webm carries the sounds on its own track, so set
 Audio Monitoring to *Monitor and Output* if they should reach the stream,
 and Audio Fade Style to *Fade out to transition point*. Leave *Track Matte*
 off: the webm's alpha does the reveal. Then pick it as the transition into
