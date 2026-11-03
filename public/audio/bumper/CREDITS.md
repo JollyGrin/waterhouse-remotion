@@ -29,9 +29,19 @@ see their own `CREDITS.md`.
 | `hiss.wav` | synthesised | seeded noise 300 Hz – 6 kHz with a faint 50 Hz mains buzz, 3.5 s, −24 dBFS | vhs: tape hiss from PLAY to the lock |
 | `seek.wav` | synthesised | the motor with a 2.3 Hz pitch wobble, 0.9 s, −14 dBFS | vhs: the heads hunting during the roll |
 | `snow.wav` | synthesised | full-band noise with a 15.6 kHz line whistle, soft-clipped, 0.5 s, −12 dBFS | vhs: the snow burst |
+| `fader.wav` | synthesised | noise through a low-pass whose cutoff (250 Hz – 1.65 kHz) and level follow the thumb's velocity profile (`faderTravel`, 4-frame ramp, end stop at frame 32), an end-stop tick, 1.2 s, −16 dBFS | fader: the fader's friction, f8–40 |
+| `led-click.wav` | synthesised | 2 ms click + 2.2 kHz ping, 30 ms, −12 dBFS | fader: each channel LED, pitched up a little per channel |
+| `relay.wav` | synthesised | 140 Hz thud, 900 Hz tick, 8 ms of noise, 90 ms, −8 dBFS | fader: the ON AIR relay |
+| `rise.wav` | synthesised | 60 Hz with harmonics sweeping to 420 Hz over 0.8 s, louder as it goes, hard cut, −14 dBFS | fader: the push into the panel, cut at f96 |
+| `clack.wav` | synthesised | 6 ms plastic tick under 2.5 kHz, a 700 Hz body, a 180 Hz knock, 50 ms, −10 dBFS | flap: row 2's letters (they depend on the guest name), played live with ±15 % pitch |
+| `flap-cascade.wav` | synthesised from `clack` | every flip start in `src/bumper/flap-plan.ts` (mosaic, row 1, the stuck tile's fix, the exit wave) placed at its frame, pitched ±15 % and weighted per phase, soft-clipped, 3.6 s, −8 dBFS | flap: the whole cascade. Re-run the generator if the plan's timing changes |
+| `fluoro.wav` | synthesised | 100 Hz buzz with falling harmonics, a 2 kHz whine, a 1.3 Hz ripple, 4 s, −24 dBFS | flap: the hall's tubes |
 
 The door also uses, unchanged: `../pullup/thud.wav` (knocks), `../recap/slam.wav`
 (the slam), `../recap/tick.wav` (the name), `../recap/whoosh.wav` (the push, at
 half speed). The lamp uses `../pullup/presence.wav` (room tone, quiet) and
 `../pullup/click.wav` (the switch). The VHS uses `../pullup/presence.wav`
-(room tone) and `../pullup/click.wav` (PLAY, and each tracking sweep).
+(room tone) and `../pullup/click.wav` (PLAY, and each tracking sweep). The
+fader uses `../pullup/presence.wav`, `hum.wav` (the desk's electrics),
+`clunk.wav` + `../pullup/click.wav` (PLAY) and `../recap/tick.wav` (the name
+tape). The split-flap uses `../pullup/presence.wav` (hall).

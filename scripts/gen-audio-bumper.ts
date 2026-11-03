@@ -14,6 +14,7 @@
  */
 
 import { existsSync, readFileSync, writeFileSync } from "fs";
+import { clacks, flapPlan, isBakedClack } from "../src/bumper/flap-plan";
 
 const OUT_DIR = "public/audio/bumper";
 const SR = 48000;
@@ -340,6 +341,136 @@ export function snow(seconds: number): Float32Array {
   return fade(x, 0.01, 0.05);
 }
 
+// --- Round 4 ---
+
+/** A damped sine: `hz` for `seconds`, decaying with time constant `tau`. */
+function ping(hz: number, seconds: number, tau: number, seed = 0): Float32Array {
+  const n = Math.floor(seconds * SR);
+  const out = new Float32Array(n);
+  const phase0 = seed * 1.7;
+  for (let i = 0; i < n; i++) {
+    const t = i / SR;
+    out[i] = Math.sin(2 * Math.PI * hz * t + phase0) * Math.exp(-t / tau);
+  }
+  return out;
+}
+
+/**
+ * The fader's friction: noise whose brightness and level follow the
+ * thumb's velocity - a 4-frame ramp, constant speed to the end stop at
+ * frame 32, then a tick as the cap hits the stop. Matches `faderTravel`
+ * (4, 32) in src/bumper/fx.ts, 30 fps.
+ */
+export function faderSlide(): Float32Array {
+  const seconds = 36 / 30;
+  const n = Math.floor(seconds * SR);
+  const raw = whiteNoise(seconds, 101);
+  const out = new Float32Array(n);
+  let y = 0;
+  let y2 = 0;
+  for (let i = 0; i < n; i++) {
+    const f = (i / SR) * 30;
+    const v = f < 0 ? 0 : f < 4 ? f / 4 : f <= 32 ? 1 : 0;
+    const hz = 250 + 1400 * v;
+    const a = 1 - Math.exp((-2 * Math.PI * hz) / SR);
+    y += a * (raw[i] - y);
+    y2 += a * (y - y2);
+    out[i] = y2 * Math.sqrt(v);
+  }
+  const stop = envelope(lowpass(whiteNoise(0.03, 102), 1200), (t) => Math.exp(-t * 180));
+  const stopAt = Math.floor((32 / 30) * SR);
+  for (let i = 0; i < stop.length && stopAt + i < n; i++) out[stopAt + i] += stop[i] * 0.8;
+  return fade(highpass(out, 180), 0.005, 0.02);
+}
+
+/** A channel LED's relay: a 2 ms click and a 2.2 kHz ping, 20 ms. */
+export function ledClick(): Float32Array {
+  const click = envelope(highpass(whiteNoise(0.004, 111), 2000), (t) => Math.exp(-t * 900));
+  return fade(mix(click, envelope(ping(2200, 0.03, 0.006), () => 0.7)), 0.0003, 0.005);
+}
+
+/** The ON AIR relay: a heavier contact - 140 Hz thud, a 900 Hz tick, 8 ms of noise. */
+export function relay(): Float32Array {
+  const thud = ping(140, 0.09, 0.02);
+  const tick = ping(900, 0.03, 0.005);
+  const burst = envelope(lowpass(whiteNoise(0.012, 121), 2500), (t) => Math.exp(-t * 300));
+  return fade(mix(envelope(thud, () => 0.9), envelope(tick, () => 0.5), burst), 0.0005, 0.02);
+}
+
+/**
+ * The rising hum of the push: 60 Hz with harmonics sweeping to 420 Hz over
+ * 0.8 s, louder as it goes, cut with a 5 ms fade.
+ */
+export function rise(): Float32Array {
+  const seconds = 0.8;
+  const n = Math.floor(seconds * SR);
+  const out = new Float32Array(n);
+  let phase = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / SR;
+    const u = t / seconds;
+    const hz = 60 * Math.pow(7, u * u);
+    phase += (2 * Math.PI * hz) / SR;
+    let v = 0;
+    for (const [k, amp] of [[1, 1], [2, 0.5], [3, 0.3], [5, 0.12]] as Array<[number, number]>) v += amp * Math.sin(phase * k);
+    out[i] = v * (0.25 + 0.75 * u * u);
+  }
+  return fade(lowpass(out, 2400), 0.02, 0.005);
+}
+
+/**
+ * One split-flap clack: a plastic tick (6 ms of noise under 2.5 kHz), a
+ * 700 Hz body and a dull 180 Hz knock. `rate` shifts the pitch.
+ */
+export function clack(rate = 1): Float32Array {
+  const tick = envelope(lowpass(whiteNoise(0.012, 131), 2500), (t) => Math.exp(-t * 350));
+  const body = envelope(ping(700, 0.04, 0.007), () => 0.6);
+  const knock = envelope(ping(180, 0.05, 0.012), () => 0.5);
+  return resample(fade(mix(tick, body, knock), 0.0003, 0.01), rate);
+}
+
+/** Fluorescent tubes: a 100 Hz buzz with a thin 2 kHz whine and a slow ripple. */
+export function fluoro(seconds: number): Float32Array {
+  const n = Math.floor(seconds * SR);
+  const out = new Float32Array(n);
+  const rng = makeRng(141);
+  for (let i = 0; i < n; i++) {
+    const t = i / SR;
+    let v = 0;
+    for (let h = 1; h <= 7; h++) v += Math.sin(2 * Math.PI * 100 * h * t) / (h * h);
+    const whine = 0.05 * Math.sin(2 * Math.PI * 2000 * t) * (1 + 0.5 * Math.sin(2 * Math.PI * 0.7 * t));
+    const ripple = 1 + 0.08 * Math.sin(2 * Math.PI * 1.3 * t);
+    out[i] = (v * 0.4 + whine) * ripple + (rng() * 2 - 1) * 0.015;
+  }
+  return fade(lowpass(out, 4000), 0.3, 0.3);
+}
+
+/**
+ * The whole split-flap cascade, baked from the plan in flap-plan.ts: a
+ * clack at every flip start (mosaic, row 1, the stuck tile's fix, the
+ * exit wave), pitched and weighted per flip. Row 2's build is not here -
+ * it depends on the guest name - so Flap.tsx plays those live.
+ */
+export function flapCascade(): Float32Array {
+  const list = clacks(flapPlan(null)).filter(isBakedClack);
+  const last = Math.max(...list.map((c) => c.frame));
+  const out = new Float32Array(Math.floor(((last + 6) / 30) * SR));
+  const cache = new Map<number, Float32Array>();
+  for (const c of list) {
+    const rate = Math.round(c.rate * 40) / 40;
+    let one = cache.get(rate);
+    if (!one) {
+      one = clack(rate);
+      cache.set(rate, one);
+    }
+    const at = Math.floor((c.frame / 30) * SR);
+    for (let i = 0; i < one.length && at + i < out.length; i++) out[at + i] += one[i] * c.gain * 0.5;
+  }
+  // Soft-clip the densest frames instead of letting them crack.
+  for (let i = 0; i < out.length; i++) out[i] = Math.tanh(out[i]);
+  return out;
+}
+
 const PULLUP = "public/audio/pullup";
 const RECAP = "public/audio/recap";
 const KENNEY = "public/audio/pullup/kenney";
@@ -404,6 +535,19 @@ function build() {
   out("hiss", normalize(hiss(3.5), -24));
   out("seek", normalize(motor(0.9, true), -14));
   out("snow", normalize(snow(0.5), -12));
+
+  // --- Round 4 ---
+
+  // Fader: the throw, the channel relays, ON AIR, the push's rising hum.
+  out("fader", normalize(faderSlide(), -16));
+  out("led-click", normalize(ledClick(), -12));
+  out("relay", normalize(relay(), -8));
+  out("rise", normalize(rise(), -14));
+
+  // Split-flap: one clack, the baked cascade, the tubes.
+  out("clack", normalize(clack(), -10));
+  out("flap-cascade", normalize(flapCascade(), -8));
+  out("fluoro", normalize(fluoro(4), -24));
 }
 
 if (/gen-audio-bumper\.ts$/.test(process.argv[1] ?? "")) build();

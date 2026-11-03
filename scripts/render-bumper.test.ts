@@ -23,6 +23,11 @@ describe("parseArgs (bumper)", () => {
     expect(parseArgs(["--idea", "vhs", "--format", "prores"]).idea).toBe("vhs");
   });
 
+  it("accepts the round-4 ideas", () => {
+    expect(parseArgs(["--idea", "fader", "--idle"]).idea).toBe("fader");
+    expect(parseArgs(["--idea", "flap", "--strip"]).idea).toBe("flap");
+  });
+
   it("takes --format prores", () => {
     expect(parseArgs(["--idea", "door", "--format", "prores"]).format).toBe(
       "prores",

@@ -10,19 +10,23 @@
  *   bun run render:bumper --idea paper
  *   bun run render:bumper --idea neon
  *   bun run render:bumper --idea vhs
+ *   bun run render:bumper --idea fader
+ *   bun run render:bumper --idea flap
  *   bun run render:bumper --idea door --guest "Duncen"   # "with Denzo and Duncen"
  *   bun run render:bumper --idea door --idle             # just the idle state, loopable
  *   bun run render:bumper --idea corner --strip          # also the frame strip into docs/
  *   bun run render:bumper --idea door --matte            # Track Matte fallback (opaque mp4)
  *   bun run render:bumper --idea door --format prores    # out/Bumper-door.mov for editing
  *
- * --idea    door | corner | lamp | paper | neon | vhs (required).
+ * --idea    door | corner | lamp | paper | neon | vhs | fader | flap (required).
  * --guest   a name for the card; without it the card reads "with Denzo".
  * --idle    door: the open-door card held (2 s, camera drifting); corner:
  *           the drift up to the corner, no hit; lamp: the lit mark, lamp
  *           swaying, moth on; paper: the finished sheet, boiling on twos;
  *           neon: the lit sign in the rain, beam B buzzing; vhs: the tape
- *           intro wobbling. Written as out/Bumper-{idea}-idle.webm.
+ *           intro wobbling; fader: the strip with the fader up, needle on
+ *           the music; flap: the finished board, one tile rattling.
+ *           Written as out/Bumper-{idea}-idle.webm.
  * --strip   additionally render docs/bumper-{idea}-frames.png: every 10th
  *           frame over a checkerboard, for the PR and the README.
  * --format  webm (default): VP9 with alpha, for OBS. prores: ProRes 4444
@@ -85,7 +89,7 @@ const FORMATS: Record<
 function usage(message: string): never {
   console.error(`${message}\n`);
   console.error(
-    'Usage: bun run render:bumper --idea door|corner|lamp|paper|neon|vhs [--guest "Name"] [--idle] [--strip] [--matte] [--format webm|prores]',
+    'Usage: bun run render:bumper --idea door|corner|lamp|paper|neon|vhs|fader|flap [--guest "Name"] [--idle] [--strip] [--matte] [--format webm|prores]',
   );
   process.exit(1);
 }

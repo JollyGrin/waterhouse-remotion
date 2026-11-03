@@ -9,7 +9,7 @@ import { SessionBumper, bumperDuration } from "./SessionBumper";
 // composition itself, offset with a negative Sequence so it shows frame k.
 
 export const BumperStripSchema = z.object({
-  idea: z.enum(["door", "corner", "lamp", "paper", "neon", "vhs"]),
+  idea: z.enum(["door", "corner", "lamp", "paper", "neon", "vhs", "fader", "flap"]),
   guestName: z.string().nullable(),
   vhsDate: z.string().optional(),
   step: z.number().int().min(1),
