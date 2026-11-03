@@ -35,6 +35,7 @@
     "render:pullup": "bun scripts/render-pullup.ts",
     "render:session": "bun scripts/render-session.ts",
     "render:recap": "bun scripts/render-recap.ts",
+    "render:bumper": "bun scripts/render-bumper.ts",
     "render:weekly-board": "bun scripts/render-weekly-board.ts",
     "gen:audio": "bun scripts/gen-audio.ts",
     "gen:audio:recap": "bun scripts/gen-audio-recap.ts",

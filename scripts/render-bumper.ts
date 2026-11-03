@@ -1,0 +1,236 @@
+#!/usr/bin/env bun
+/**
+ * Render the "SessionBumper" OBS stinger for the Tuesday "Waterhouse
+ * Sessions" stream: a VP9 webm with a real alpha channel.
+ *
+ * Usage:
+ *   bun run render:bumper --idea door
+ *   bun run render:bumper --idea corner
+ *   bun run render:bumper --idea door --guest "Duncen"   # "with Denzo and Duncen"
+ *   bun run render:bumper --idea door --idle             # just the idle state, loopable
+ *   bun run render:bumper --idea corner --strip          # also the frame strip into docs/
+ *   bun run render:bumper --idea door --matte            # Track Matte fallback (opaque mp4)
+ *
+ * --idea    door | corner (required).
+ * --guest   a name for the card; without it the card reads "with Denzo".
+ * --idle    door: the open-door card held still (2 s); corner: the drift up
+ *           to the corner, no hit. Written as out/Bumper-{idea}-idle.webm.
+ * --strip   additionally render docs/bumper-{idea}-frames.png: every 10th
+ *           frame over a checkerboard, for the PR and the README.
+ * --matte   instead of the alpha webm, render out/Bumper-{idea}-matte.mp4:
+ *           3840x1080, the bumper over black on the left and its alpha as a
+ *           luma matte on the right, for OBS's Track Matte stinger mode.
+ *
+ * Output: out/Bumper-{idea}.webm (VP9, yuva420p, Opus audio). The script
+ * checks the pixel format with ffprobe afterwards and fails if alpha is
+ * missing.
+ */
+
+import { existsSync, mkdirSync, writeFileSync } from "fs";
+import { bumperOutName } from "../src/bumper/SessionBumper";
+
+type Idea = "door" | "corner";
+
+interface Args {
+  idea: Idea;
+  guest: string | null;
+  idle: boolean;
+  strip: boolean;
+  matte: boolean;
+}
+
+function usage(message: string): never {
+  console.error(`${message}\n`);
+  console.error(
+    'Usage: bun run render:bumper --idea door|corner [--guest "Name"] [--idle] [--strip] [--matte]',
+  );
+  process.exit(1);
+}
+
+export function parseArgs(argv: string[]): Args {
+  const value = (flag: string): string | null => {
+    const i = argv.indexOf(flag);
+    if (i === -1) return null;
+    const v = argv[i + 1];
+    if (v === undefined || v.indexOf("--") === 0)
+      usage(`${flag} needs a value.`);
+    return v;
+  };
+  const idea = value("--idea");
+  if (idea !== "door" && idea !== "corner") {
+    usage(`--idea must be "door" or "corner", got "${idea ?? ""}".`);
+  }
+  const guest = value("--guest");
+  return {
+    idea,
+    guest: guest && guest.trim() ? guest.trim() : null,
+    idle: argv.indexOf("--idle") !== -1,
+    strip: argv.indexOf("--strip") !== -1,
+    matte: argv.indexOf("--matte") !== -1,
+  };
+}
+
+// The project's own Remotion CLI, run with Bun; no bunx on the PATH needed.
+const REMOTION = ["bun", "node_modules/.bin/remotionb"];
+
+async function run(cmd: string[]): Promise<void> {
+  console.log(`\n$ ${cmd.join(" ")}`);
+  const child = Bun.spawn(cmd, {
+    cwd: process.cwd(),
+    stdin: "ignore",
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  const code = await child.exited;
+  if (code !== 0) throw new Error(`${cmd[0]} exited with ${code}`);
+}
+
+/** ffprobe from PATH, else the one Remotion ships. */
+function ffprobeBin(): string | null {
+  const which = Bun.spawnSync(["sh", "-c", "command -v ffprobe"]);
+  if (which.exitCode === 0) return which.stdout.toString().trim();
+  const candidates = [
+    "node_modules/@remotion/compositor-linux-x64-gnu/ffprobe",
+    "node_modules/@remotion/compositor-linux-arm64-gnu/ffprobe",
+    "node_modules/@remotion/compositor-darwin-arm64/ffprobe",
+    "node_modules/@remotion/compositor-darwin-x64/ffprobe",
+  ];
+  return candidates.find((c) => existsSync(c)) ?? null;
+}
+
+export interface Probe {
+  codec: string;
+  pixFmt: string;
+  // Matroska's alpha flag on the stream. ffmpeg's built-in VP9 decoder
+  // reports yuv420p for alpha webms (the alpha plane is a block addition),
+  // so this tag is what proves alpha when libvpx-vp9 is not available.
+  alphaMode: boolean;
+}
+
+/** Codec, pixel format and alpha flag of the first video stream. */
+export function probeVideo(file: string): Probe | null {
+  const bin = ffprobeBin();
+  if (!bin) return null;
+  const query = (extra: string[]) =>
+    Bun.spawnSync([
+      bin,
+      "-v",
+      "error",
+      ...extra,
+      "-select_streams",
+      "v:0",
+      "-show_entries",
+      "stream=codec_name,pix_fmt:stream_tags=alpha_mode",
+      "-of",
+      "default=nw=1",
+      file,
+    ]);
+  // Decoding through libvpx-vp9 reports yuva420p directly; Remotion's
+  // trimmed ffprobe does not know that option, so fall back to the plain
+  // probe and the alpha_mode tag.
+  let res = query(["-c:v", "libvpx-vp9"]);
+  if (res.exitCode !== 0) res = query([]);
+  const fields = new Map<string, string>();
+  for (const line of res.stdout.toString().split("\n")) {
+    const i = line.indexOf("=");
+    if (i > 0) fields.set(line.slice(0, i), line.slice(i + 1));
+  }
+  const codec = fields.get("codec_name");
+  if (!codec) return null;
+  return {
+    codec,
+    pixFmt: fields.get("pix_fmt") ?? "",
+    alphaMode: fields.get("TAG:alpha_mode") === "1",
+  };
+}
+
+export const hasAlpha = (p: Probe) =>
+  p.codec === "vp9" && (p.pixFmt === "yuva420p" || p.alphaMode);
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  console.log("=== SessionBumper Renderer ===\n");
+
+  mkdirSync("out", { recursive: true });
+  const props = { idea: args.idea, guestName: args.guest, idle: args.idle };
+  const stem = bumperOutName(props).replace(/\.webm$/, "");
+  const propsPath = `/tmp/waterhouse-bumper-${stem}.json`;
+  writeFileSync(propsPath, JSON.stringify(props, null, 2));
+
+  if (args.matte) {
+    const mattePath = `out/${stem}-matte.mp4`;
+    await run([
+      ...REMOTION,
+      "render",
+      "src/index.ts",
+      "SessionBumperMatte",
+      mattePath,
+      `--props=${propsPath}`,
+      "--codec=h264",
+    ]);
+    console.log(
+      `\nDone! ${mattePath} - OBS Stinger, Track Matte, layout "Same file, side by side", left fill / right matte.`,
+    );
+    return;
+  }
+
+  const outPath = `out/${stem}.webm`;
+
+  // The composition's calculateMetadata already defaults to these, but
+  // remotion.config.ts sets jpeg frames for the other clips and config
+  // beats composition defaults, so say it on the command line too.
+  await run([
+    ...REMOTION,
+    "render",
+    "src/index.ts",
+    "SessionBumper",
+    outPath,
+    `--props=${propsPath}`,
+    "--codec=vp9",
+    "--pixel-format=yuva420p",
+    "--image-format=png",
+  ]);
+
+  const probe = probeVideo(outPath);
+  if (!probe) {
+    console.log("\n(ffprobe not found - alpha not verified.)");
+  } else if (!hasAlpha(probe)) {
+    throw new Error(
+      `${outPath} is ${probe.codec}/${probe.pixFmt}, expected vp9/yuva420p - no alpha channel.`,
+    );
+  } else {
+    console.log(
+      `\nAlpha OK: ${probe.codec} ${probe.pixFmt}${probe.alphaMode ? " (alpha_mode=1)" : ""}`,
+    );
+  }
+  console.log(`Done! ${outPath}`);
+
+  if (args.strip) {
+    const stripProps = {
+      idea: args.idea,
+      guestName: args.guest,
+      step: 10,
+      columns: 4,
+    };
+    const stripPropsPath = `/tmp/waterhouse-bumper-strip-${args.idea}.json`;
+    writeFileSync(stripPropsPath, JSON.stringify(stripProps, null, 2));
+    const stripPath = `docs/bumper-${args.idea}-frames.png`;
+    await run([
+      ...REMOTION,
+      "still",
+      "src/index.ts",
+      "SessionBumperStrip",
+      stripPath,
+      `--props=${stripPropsPath}`,
+      "--frame=0",
+    ]);
+    console.log(`Strip: ${stripPath}`);
+  }
+}
+
+if (/render-bumper\.ts$/.test(process.argv[1] ?? "")) {
+  main().catch((err) => {
+    console.error("Error:", err);
+    process.exit(1);
+  });
+}

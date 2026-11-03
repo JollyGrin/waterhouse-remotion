@@ -23,6 +23,21 @@ import {
   houseWeeklyPropsSchema,
   HOUSEWEEKLY_DURATION,
 } from "./HouseWeekly";
+import {
+  SessionBumper,
+  SessionBumperSchema,
+  bumperDuration,
+  bumperOutName,
+  calculateBumperMetadata,
+  type SessionBumperProps,
+} from "./bumper/SessionBumper";
+import {
+  BumperStrip,
+  BumperStripSchema,
+  stripSize,
+  type BumperStripProps,
+} from "./bumper/Strip";
+import { BumperMatte, MATTE_HEIGHT, MATTE_WIDTH } from "./bumper/Matte";
 import recapFixture from "./audience/fixtures/recap.json";
 import weeklyFixture from "./audience/fixtures/weekly.json";
 import weeklyFallbackFixture from "./audience/fixtures/weekly-fallback.json";
@@ -34,6 +49,18 @@ const calculateWeeklyMetadata: CalculateMetadataFunction<WeeklyLineupProps> = ({
   return {
     durationInFrames: getCompositionDuration(props.artists.length),
   };
+};
+
+// The strip's canvas grows with the number of cells.
+const calculateStripMetadata: CalculateMetadataFunction<BumperStripProps> = ({
+  props,
+}) => ({ ...stripSize(props), durationInFrames: 1 });
+
+const defaultBumperProps: SessionBumperProps = {
+  idea: "door",
+  guestName: null,
+  idle: false,
+  preview: false,
 };
 
 const defaultArtists: WeeklyLineupProps["artists"] = [
@@ -314,6 +341,64 @@ export const RemotionRoot: React.FC = () => {
           chatLines: plainSetChat,
           seed: 3,
           bedVariant: "b" as const,
+        }}
+      />
+      {/* The Tuesday stream stinger: landscape, VP9 webm with alpha. Flip
+          `idea` between "door" and "corner"; `preview` shows a checkerboard
+          where the live scene will be. */}
+      <Composition
+        id="SessionBumper"
+        component={SessionBumper}
+        schema={SessionBumperSchema}
+        calculateMetadata={calculateBumperMetadata}
+        durationInFrames={bumperDuration(defaultBumperProps)}
+        fps={30}
+        width={1920}
+        height={1080}
+        defaultProps={defaultBumperProps}
+      />
+      <Composition
+        id="SessionBumperCorner"
+        component={SessionBumper}
+        schema={SessionBumperSchema}
+        calculateMetadata={calculateBumperMetadata}
+        durationInFrames={bumperDuration({ idea: "corner" })}
+        fps={30}
+        width={1920}
+        height={1080}
+        defaultProps={{ ...defaultBumperProps, idea: "corner" as const }}
+      />
+      {/* Track Matte fallback: fill on the left, alpha as luma on the right,
+          one opaque mp4. Only the duration comes from the bumper metadata. */}
+      <Composition
+        id="SessionBumperMatte"
+        component={BumperMatte}
+        schema={SessionBumperSchema}
+        calculateMetadata={({ props }) => ({
+          durationInFrames: bumperDuration(props),
+          defaultOutName: bumperOutName(props).replace(".webm", "-matte.mp4"),
+        })}
+        durationInFrames={bumperDuration(defaultBumperProps)}
+        fps={30}
+        width={MATTE_WIDTH}
+        height={MATTE_HEIGHT}
+        defaultProps={defaultBumperProps}
+      />
+      {/* Contact sheet of either idea over a checkerboard, one still. */}
+      <Composition
+        id="SessionBumperStrip"
+        component={BumperStrip}
+        schema={BumperStripSchema}
+        calculateMetadata={calculateStripMetadata}
+        durationInFrames={1}
+        fps={30}
+        width={1920}
+        height={1080}
+        defaultProps={{
+          idea: "door" as const,
+          guestName: null,
+          step: 10,
+          columns: 4,
         }}
       />
       <Composition
