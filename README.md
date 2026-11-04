@@ -13,6 +13,7 @@ Outputs, next to `-o` (default: next to the input):
 | file | what |
 |---|---|
 | `<name>.edited.mp4` | the edit: h264 + aac, captions burned in, one encode pass |
+| `<name>.clean.mp4` | the same cut and audio with no captions and blank title cards: input for `sesh-upscale` (skip with `--no-clean`) |
 | `<name>.edited.srt` | the same captions, timed to the edited timeline |
 | `<name>.decisions.json` | every decision: cuts (with kind + context), keep segments, A/V offset (both checks), pre-take cut, review list, stats |
 | `<name>.work/` | cache: transcript, silences, A/V analysis, contact sheet, LLM replies, intermediate wavs |
@@ -80,6 +81,43 @@ An insert at AT goes before the kept segment starting within 2s of AT; otherwise
 segment is split at the quietest point between words. Inserted clips are conformed to the
 interview's size and fps, level-matched to the speech, and fade in and out. A clip directly
 followed by a title card also dips to black. Captions never run over an insert.
+
+## 1080p / upscaling
+
+Sources are 360p. To publish at 1080p, upscale the **clean** cut, then draw the captions and
+title cards at 1080p so the text stays sharp:
+
+```
+uv run sesh-upscale out/session.clean.mp4 -o out/session.clean.1080p.mp4 --method lanczos   # minutes
+uv run sesh-upscale out/session.clean.mp4 -o out/session.clean.1080p.mp4 --method x4plus    # hours, GPU
+uv run sesh-overlay out/session.decisions.json out/session.clean.1080p.mp4 -o out/session.edited.1080p.mp4
+```
+
+`sesh-upscale` (x4plus) extracts the frames, then works in chunks: Real-ESRGAN 4× → Lanczos
+down to `--height` → x264 → delete the 4× PNGs. At the end it concatenates the chunks and
+muxes the audio. **Re-run the same command to resume**: finished chunks are skipped, and
+frames already upscaled in an interrupted chunk aren't redone. It uses the standard library
+only, so on a GPU box without the full environment run `uv run --no-project python -I src/sesh_edit/upscale.py …`.
+
+| flag | default | |
+|---|---|---|
+| `--method` | x4plus | `x4plus` (Real-ESRGAN ncnn-vulkan) or `lanczos` (one ffmpeg pass) |
+| `--height` | 1080 | output height |
+| `--realesrgan PATH` | `$SESH_REALESRGAN` / PATH | `realesrgan-ncnn-vulkan` binary or its folder (with `models/`) |
+| `--tile` / `--jobs` / `--gpu` | auto | ncnn `-t` / `-j` / `-g`. RTX 3070: `--tile 512 --jobs 1:1:2` |
+| `--chunk N` | 1000 | frames per chunk (~4 GB of 4× PNGs at a time) |
+| `--start S` / `--duration S` | | only a slice, e.g. a 10 s benchmark |
+| `--crf` / `--preset` / `--encoder` | 16 / slow / libx264 | output encode |
+| `--work DIR` | `<output>.upscale-work` | job state; a different job in the same dir is refused |
+
+Monitoring: `sesh-upscale --status DIR` prints `DIR/status.json` (state, frames done, rolling
+s/frame, ETA, disk free, and on NVIDIA GPU utilisation, VRAM, temperature and power) plus
+the log tail. nvidia-smi samples go to `DIR/gpu.csv`. A Real-ESRGAN error (e.g. out of
+VRAM: lower `--tile`) stops the job with `state: failed` and never marks the chunk done.
+
+`sesh-overlay` checks that the video is the clean cut of those decisions (same fps and frame count),
+copies the audio, and writes a matching `.srt`. Background and measurements:
+[docs/quality-and-upscaling.md](docs/quality-and-upscaling.md).
 
 ## Pipeline
 
@@ -171,4 +209,3 @@ They are echoed into every `decisions.json`:
 - ASR sometimes skips quiet or overlapping speech. Those words are missing from the
   captions, but the audio is never cut (see `skipped_gaps` in decisions.json).
 - The LLM steps are not deterministic. Their replies are cached in the work dir, so
-  re-runs are stable until you `--force` or delete the cache.

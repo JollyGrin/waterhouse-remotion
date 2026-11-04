@@ -4,7 +4,8 @@ Timeline = keep segments of the main video (any order) + inserts (clips from oth
 title cards). Audio is assembled sample-accurately in numpy (10ms fades at every cut,
 longer fades on clips), mixed to a centred track and loudness-normalised. Video frames are
 picked per output frame from the right source, captions are burned in, and everything is
-encoded once (h264 + aac)."""
+encoded once (h264 + aac). The same pass can also write a clean copy (no captions, blank
+title cards) for upscaling; sesh-overlay then draws the text at the upscaled resolution."""
 from __future__ import annotations
 
 import subprocess
@@ -191,8 +192,54 @@ class FrameSource:
             self.proc = None
 
 
+def _encoder(path: Path, W: int, H: int, fps: float, audio: Path | str, crf: int = 18,
+             preset: str = "medium", audio_copy: bool = False) -> subprocess.Popen:
+    """rgb24 frames on stdin + an audio file -> h264/aac mp4."""
+    return subprocess.Popen(
+        ["ffmpeg", "-v", "error", "-y",
+         "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", f"{fps}", "-i", "-",
+         "-i", str(audio),
+         "-map", "0:v", "-map", "1:a",
+         "-c:v", "libx264", "-preset", preset, "-crf", str(crf), "-pix_fmt", "yuv420p",
+         *(["-c:a", "copy"] if audio_copy else ["-c:a", "aac", "-b:a", "192k"]),
+         "-shortest", "-movflags", "+faststart", str(path)],
+        stdin=subprocess.PIPE,
+    )
+
+
+class Compositor:
+    """Everything drawn on top of the footage: karaoke captions on main-video frames and title-card
+    text. Resolution-independent, so the same decisions can be overlaid on the 360p cut
+    (sesh-edit) or on an upscaled clean cut (sesh-overlay)."""
+
+    def __init__(self, tm: TimeMap, lines: list[dict], rend: Renderer, W: int, H: int, fps: float):
+        self.tm, self.lines, self.rend, self.W, self.H, self.fps = tm, lines, rend, W, H, fps
+        self.cards: dict[int, TitleCard] = {}
+        self.hint = 0
+
+    def item(self, n: int) -> tuple[int, dict, float]:
+        t = (n + 0.5) / self.fps
+        k = self.tm.item_at(t)
+        return k, self.tm.items[k], t - self.tm.cum[k]
+
+    def overlay(self, n: int, frame: np.ndarray) -> np.ndarray:
+        k, it, local = self.item(n)
+        if it["kind"] == "card":
+            if k not in self.cards:
+                self.cards[k] = TitleCard(it["text"], self.W, self.H, it["dur"], it.get("fade_s", 0.5))
+            return np.maximum(frame, self.cards[k].frame(local))
+        out = frame.copy()
+        if it["kind"] == "main":
+            ln, cw, self.hint = state_at(self.lines, n / self.fps, self.hint)
+            if ln is not None:
+                self.rend.composite(out, self.rend.strip(ln, cw))
+        return out
+
+
 def render(src: str, info: dict, decisions: dict, out_mp4: Path, out_srt: Path, work: Path, st: Style,
-           fade_ms: float = 10.0, log=print) -> dict:
+           fade_ms: float = 10.0, log=print, out_clean: Path | None = None) -> dict:
+    """Writes out_mp4 (captions + card text burned in) and, if given, out_clean: the same cut
+    with no captions and blank title cards, for upscaling + sesh-overlay at a higher resolution."""
     import soundfile as sf
 
     from .audio import loudnorm_2pass, mix_mics
@@ -237,24 +284,13 @@ def render(src: str, info: dict, decisions: dict, out_mp4: Path, out_srt: Path, 
     # ---- video
     n_out = int(round(n_samples / sr * fps))
     log(f"    video: {n_out} output frames, {len(tm.items)} timeline items ({len(inserts)} inserts)")
-    enc = subprocess.Popen(
-        ["ffmpeg", "-v", "error", "-y",
-         "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", f"{fps}", "-i", "-",
-         "-i", str(cut_wav),
-         "-map", "0:v", "-map", "1:a",
-         "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
-         "-c:a", "aac", "-b:a", "192k", "-shortest", "-movflags", "+faststart", str(out_mp4)],
-        stdin=subprocess.PIPE,
-    )
+    outs = [(out_mp4, True)] + ([(out_clean, False)] if out_clean else [])
+    encs = [(_encoder(path, W, H, fps, cut_wav), overlays) for path, overlays in outs]
     sources: dict[str, FrameSource] = {src: FrameSource(src, W, H, fps, conform=False)}
-    cards: dict[int, TitleCard] = {}
-    hint = 0
+    comp = Compositor(tm, lines, rend, W, H, fps)
     try:
         for n in range(n_out):
-            t = (n + 0.5) / fps
-            k = tm.item_at(t)
-            it = tm.items[k]
-            local = t - tm.cum[k]
+            k, it, local = comp.item(n)
             if it["kind"] == "main":
                 frame = sources[src].get(max(0, int(round((it["start"] + local) * fps - 0.5))))
             elif it["kind"] == "clip":
@@ -264,23 +300,18 @@ def render(src: str, info: dict, decisions: dict, out_mp4: Path, out_srt: Path, 
                 if vf and it["dur"] - local < vf:  # dip to black into a following title card
                     frame = (frame * max(0.0, (it["dur"] - local) / vf)).astype(np.uint8)
             else:
-                if k not in cards:
-                    cards[k] = TitleCard(it["text"], W, H, it["dur"], it.get("fade_s", 0.5))
-                frame = cards[k].frame(local)
-            out = frame.copy()
-            if it["kind"] == "main":
-                ln, cw, hint = state_at(lines, n / fps, hint)
-                if ln is not None:
-                    rend.composite(out, rend.strip(ln, cw))
-            enc.stdin.write(out.tobytes())
+                frame = np.zeros((H, W, 3), np.uint8)  # title card background; text is an overlay
+            for enc, overlays in encs:
+                enc.stdin.write((comp.overlay(n, frame) if overlays else frame).tobytes())
             if n % (int(fps) * 120) == 0:
                 log(f"      {n / fps / 60:5.1f}/{n_out / fps / 60:.1f} min")
     finally:
-        enc.stdin.close()
-        enc.wait()
+        for enc, _ in encs:
+            enc.stdin.close()
+            enc.wait()
         for s in sources.values():
             s.close()
-    if enc.returncode != 0:
+    if any(enc.returncode != 0 for enc, _ in encs):
         raise RuntimeError("ffmpeg encode failed")
     return {"output_duration_s": round(n_samples / sr, 3), "caption_lines": len(lines), "frames": n_out,
             "audio_mix": mix_info, "loudness": ln_info,

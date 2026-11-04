@@ -17,6 +17,8 @@ dependencies = [
 
 [project.scripts]
 sesh-edit = "sesh_edit.cli:main"
+sesh-overlay = "sesh_edit.overlay:main"
+sesh-upscale = "sesh_edit.upscale:main"
 
 [build-system]
 requires = ["hatchling"]

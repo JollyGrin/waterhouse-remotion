@@ -261,6 +261,8 @@ def main(argv=None) -> int:
     ap.add_argument("--card-dur", type=float, default=3.5, help="title card length (s)")
     ap.add_argument("--keep-stereo", action="store_true",
                     help="keep the original channels (default: mix the two mics to a centred, level-matched track)")
+    ap.add_argument("--no-clean", action="store_true",
+                    help="don't also write <name>.clean.mp4 (same cut, no captions/card text; input for sesh-upscale)")
     ap.add_argument("--no-loudnorm", action="store_true", help="skip loudness normalisation")
     ap.add_argument("--lufs", type=float, default=-14.0, help="loudness target (default -14 LUFS, true peak -1 dBTP)")
     args = ap.parse_args(argv)
@@ -278,6 +280,7 @@ def main(argv=None) -> int:
     else:
         stem_path = base
     out_srt = out_mp4.with_suffix(".srt")
+    out_clean = None if args.no_clean else stem_path.with_name(stem_path.name + ".clean.mp4")
     out_dec = stem_path.with_name(stem_path.name + ".decisions.json")
     work = Path(args.work_dir) if args.work_dir else stem_path.with_name(stem_path.name + ".work")
     work.mkdir(parents=True, exist_ok=True)
@@ -431,10 +434,13 @@ def main(argv=None) -> int:
 
     log("7/7 render: one pass, h264 + aac, burned karaoke captions")
     st = Style(**decisions.get("style", asdict(st)))
-    res = render(src, info, decisions, out_mp4, out_srt, work, st, fade_ms=decisions["params"]["fade_ms"], log=lambda m: log(m))
+    res = render(src, info, decisions, out_mp4, out_srt, work, st, fade_ms=decisions["params"]["fade_ms"],
+                 log=lambda m: log(m), out_clean=out_clean)
     decisions["render"] = {k: v for k, v in res.items() if k in ("audio_mix", "loudness", "inserts")}
     out_dec.write_text(json.dumps(decisions, indent=1))
     log(f"done: {out_mp4} ({fmt_t(res['output_duration_s'])}), {out_srt}, {res['caption_lines']} caption lines")
+    if out_clean:
+        log(f"clean cut (no captions, for sesh-upscale + sesh-overlay): {out_clean}")
     log(f"total runtime {time.time() - T_START:.0f}s")
     return 0
 

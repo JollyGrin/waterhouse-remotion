@@ -29,6 +29,9 @@ class Style:
     shadow_alpha: float = 0.6
     line_gap_hold: float = 0.6    # keep a line up through pauses shorter than this
 
+    def __post_init__(self):
+        self.box_color = tuple(self.box_color)  # a list when loaded from decisions.json
+
 
 def clean_word(w: str) -> str:
     return re.sub(r"\[[A-Z]+\]", "", w).strip()
