@@ -119,6 +119,64 @@ VRAM: lower `--tile`) stops the job with `state: failed` and never marks the chu
 copies the audio, and writes a matching `.srt`. Background and measurements:
 [docs/quality-and-upscaling.md](docs/quality-and-upscaling.md).
 
+## Machines & getting videos in (Dropbox → GPU box)
+
+Three machines can drive this tool. Heavy work (transcription, x4plus upscaling) runs on the
+**GPU box**.
+
+| machine | role | how to reach it |
+|---|---|---|
+| **GPU box** `<gpu-host>` (Windows 10, RTX 3070) | runs the pipeline | Mac: `ssh gpu` (PowerShell: chain with `;`, never `&`). Any machine: T3 linked environment **<gpu-host>**, project `waterhouse-video-editing` |
+| Dean's MacBook (M3 Max) | runs it too (MPS); orchestration | local |
+| <vps> (VPS) | orchestration only, no GPU | steers the GPU box through T3 only (SSH from the VPS to the GPU box is blocked by design) |
+
+GPU box layout:
+
+| path | what |
+|---|---|
+| `C:\Users\<you>\git\waterhouse\waterhouse-video-editing` | this repo (`main`) |
+| `C:\Users\<you>\Videos\sesh-in\` | **inbox**: source videos |
+| `C:\Users\<you>\Videos\sesh-out\` | **outbox**: edits, decisions, upscales |
+| `C:\Users\<you>\tools\realesrgan\` | Real-ESRGAN ncnn-vulkan (Windows build, v0.2.5.0). User env `SESH_REALESRGAN` points here |
+
+ffmpeg, uv, git and the `claude` CLI are on the user PATH. torch there is the CPU build
+(the code picks MPS or CPU), so transcription is slower than on the Mac; upscaling uses the
+GPU through Vulkan.
+
+### Download from a Dropbox share link
+
+Change `dl=0` to `dl=1` and keep the `rlkey=` parameter (newer `/scl/fi/` links need it).
+`st=` can be dropped. On the GPU box (Windows ships `curl.exe`):
+
+```powershell
+New-Item -ItemType Directory -Force C:\Users\<you>\Videos\sesh-in | Out-Null
+curl.exe -L -o "C:\Users\<you>\Videos\sesh-in\<name>.mp4" "https://www.dropbox.com/scl/fi/<id>/<name>.mp4?rlkey=<key>&dl=1"
+```
+
+On Mac/Linux it's the same `curl -L -o … "…&dl=1"`.
+
+- A **folder** link downloads as one `.zip`: `Expand-Archive <zip> <dir>`.
+- Check the size afterwards. A few-KB file is an HTML error page (bad or expired link,
+  or a missing `rlkey`).
+- A share link is readable by anyone who has it. Expire or delete it after the pull.
+- Disk: C: had ~76 GB free on 2026-11-04. x4plus works in chunks (~4 GB of PNGs at a time),
+  but don't run several upscales at once.
+
+### Full run on the GPU box (trim → upscale → caption)
+
+```powershell
+cd C:\Users\<you>\git\waterhouse\waterhouse-video-editing
+$in  = "C:\Users\<you>\Videos\sesh-in\<name>.mp4"
+$out = "C:\Users\<you>\Videos\sesh-out\<name>"
+uv run sesh-edit $in -o "$out.edited.mp4"                     # trim + 360p preview + <name>.clean.mp4 + decisions.json
+uv run sesh-upscale "$out.clean.mp4" -o "$out.clean.1080p.mp4" --method x4plus --tile 512 --jobs 1:1:2
+uv run sesh-overlay "$out.decisions.json" "$out.clean.1080p.mp4" -o "$out.edited.1080p.mp4"
+```
+
+x4plus takes hours. Re-run the same `sesh-upscale` command to resume, and check progress
+with `uv run sesh-upscale --status "$out.clean.1080p.mp4.upscale-work"`. Run long jobs from
+a T3 thread on the GPU box (it needs a logged-in Windows session; the T3 app starts at login).
+
 ## Pipeline
 
 1. **Transcribe, keeping fillers.** Standard Whisper drops "um/uh". On a test clip,
