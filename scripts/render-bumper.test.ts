@@ -1,0 +1,84 @@
+import { describe, expect, it } from "bun:test";
+import { hasAlpha, parseArgs } from "./render-bumper";
+
+describe("parseArgs (bumper)", () => {
+  it("reads the idea and the flags", () => {
+    expect(parseArgs(["--idea", "corner", "--idle", "--strip"])).toEqual({
+      idea: "corner",
+      guest: null,
+      idle: true,
+      strip: true,
+      matte: false,
+      format: "webm",
+    });
+  });
+
+  it("accepts the round-2 ideas", () => {
+    expect(parseArgs(["--idea", "lamp"]).idea).toBe("lamp");
+    expect(parseArgs(["--idea", "paper", "--idle"]).idea).toBe("paper");
+  });
+
+  it("accepts the round-3 ideas", () => {
+    expect(parseArgs(["--idea", "neon", "--strip"]).idea).toBe("neon");
+    expect(parseArgs(["--idea", "vhs", "--format", "prores"]).idea).toBe("vhs");
+  });
+
+  it("accepts the round-4 ideas", () => {
+    expect(parseArgs(["--idea", "fader", "--idle"]).idea).toBe("fader");
+    expect(parseArgs(["--idea", "flap", "--strip"]).idea).toBe("flap");
+  });
+
+  it("takes --format prores", () => {
+    expect(parseArgs(["--idea", "door", "--format", "prores"]).format).toBe(
+      "prores",
+    );
+  });
+
+  it("trims the guest and drops an empty one", () => {
+    expect(parseArgs(["--idea", "door", "--guest", " Duncen "]).guest).toBe(
+      "Duncen",
+    );
+    expect(parseArgs(["--idea", "door", "--guest", "  "]).guest).toBeNull();
+  });
+});
+
+describe("hasAlpha", () => {
+  it("accepts yuva420p from a libvpx probe", () => {
+    expect(
+      hasAlpha({ codec: "vp9", pixFmt: "yuva420p", alphaMode: false }),
+    ).toBe(true);
+  });
+
+  it("accepts the alpha_mode tag when the probe cannot see the plane", () => {
+    expect(
+      hasAlpha({ codec: "vp9", pixFmt: "yuv420p", alphaMode: true }),
+    ).toBe(true);
+  });
+
+  it("accepts ProRes 4444 with alpha", () => {
+    expect(
+      hasAlpha(
+        { codec: "prores", pixFmt: "yuva444p10le", alphaMode: false },
+        "prores",
+      ),
+    ).toBe(true);
+    expect(
+      hasAlpha(
+        { codec: "prores", pixFmt: "yuva444p12le", alphaMode: false },
+        "prores",
+      ),
+    ).toBe(true);
+    expect(
+      hasAlpha(
+        { codec: "prores", pixFmt: "yuv422p10le", alphaMode: false },
+        "prores",
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects a plain vp9", () => {
+    expect(
+      hasAlpha({ codec: "vp9", pixFmt: "yuv420p", alphaMode: false }),
+    ).toBe(false);
+  });
+});
