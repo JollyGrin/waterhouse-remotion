@@ -22,7 +22,7 @@ tokens or `.env` for the recap videos: every API they read is public.
 | **PullUp** | 10 s looping "I'm on tonight, pull up" clip per event. A shared booking - two or more artists on one reservation - gets a single clip led by the event title, with everyone on the bill in the stream window | Artists forward it to friends before a show | `bun run render:pullup` |
 | **WaterhouseSession** | 10 s looping clip for the Tuesday "Waterhouse Sessions" night: the guest and Denzo side by side in the stream window, with the running order ("interview with Denzo, then live set") under it | The guest forwards it to friends before the session | `bun run render:session` (guests from the booking) or `--guest "Duncen"` |
 | **WeeklyLineup** | This week's lineup as a story | Instagram story | `bun run render:weekly` |
-| **SessionBumper** | 3–4 s stinger that plays before the Tuesday stream and opens onto the live scene. Landscape, webm with alpha, eight ideas: "door", "corner", "lamp", "paper", "neon", "vhs", "fader" and "flap" | OBS, as the Stinger transition into "Waterhouse Sessions with Denzo" | `bun run render:bumper --idea door` |
+| **SessionBumper** | A library of ready-made 3–4 s stingers that open onto a live scene. Landscape, webm with alpha, eight ideas: "door", "corner", "lamp", "paper", "neon", "vhs", "fader" and "flap". (The Sessions intro itself is Fuse, see #28.) | OBS, as a Stinger transition into any scene | `bun run render:bumper --idea door` |
 
 Output lands in `out/` (gitignored). A clip takes 1–2 minutes to render.
 `docs/` holds the latest rendered examples and frame strips.
@@ -164,6 +164,11 @@ bun run render:bumper --idea door --matte           # out/Bumper-door-matte.mp4,
 bun run render:bumper --idea door --format prores   # out/Bumper-door.mov, ProRes 4444 with alpha, for editing
 ```
 
+A library of ready-made stingers: eight finished ideas to pick from, each
+one OBS Stinger transition. None of them is the Sessions intro: Dean chose
+**Fuse** for that (see #28), so these are kept as stock for other scenes and
+shows.
+
 The only landscape clip: **1920×1080, 30 fps**, rendered as **VP9 webm with
 alpha** (`yuva420p`, png frames, Opus audio). Where the live scene should
 show through, the frame is transparent; nothing is composited in Remotion.
@@ -238,6 +243,27 @@ pieces.
   tracking locks in three sweeps bottom to top, each leaving the live scene
   behind a jagged, snowy edge; the scanlines and vignette go with them.
   Fully transparent from f118.
+- **fader** (120 frames, 4 s): overhead view of one channel strip of a
+  mixing desk. Denzo's hand comes in (f2–8) and pushes the fader up
+  (f8–40, a small overshoot and settle at the end stop); each quarter of
+  the throw unmutes a channel whose LED lights one piece of the mark on a
+  dot-matrix panel, with an LED click per piece. The VU needle swings,
+  "WATERHOUSE SESSIONS" scrolls in under the mark at f40, ON AIR lights at
+  f48 with three dropouts and a relay clunk, and "with Denzo" hard-cuts in
+  at f52. Hold f56–60. The hand moves to PLAY and presses it at f68 (clunk,
+  white flash, 3 % punch-in), and the camera pushes into the panel
+  (f72–96) while a rise builds. From f84 the lit dots are holes onto the
+  live scene; from f90 every dot grows in rings from the centre until they
+  merge. Fully transparent from f106.
+- **flap** (125 frames, 4.2 s): a split-flap departure board. From f8 the
+  mosaic flips column by column through greys into the mark; at f44–45 the
+  two character rows clatter through letters to spell "WATERHOUSE
+  SESSIONS" / "WITH DENZO", one clack per landed tile over a fluorescent
+  hum. One tile (the second S of SESSIONS) sticks on the wrong letter and
+  corrects itself at f72 with a double clack. From f84 every flap turns
+  once more in a diagonal wave from the top left, and the other side of
+  each flap is the live scene. The schedule is `src/bumper/flap-plan.ts`.
+  Fully transparent from f110.
 - `--idle` renders the state to loop before the stinger: door, the open-door
   card held for 2 s with the camera still drifting (the scene already shows
   through the doorway); corner, the drift up to the corner (f0–46; it
@@ -281,7 +307,8 @@ the "Waterhouse Sessions" scene.
 **Track Matte fallback.** If OBS plays the webm without transparency (an
 older build, or hardware decoding that drops VP9 alpha), render the matte
 version instead: `--matte` writes an opaque 3840×1080 mp4 with the bumper
-over black on the left and its alpha as a luma matte on the right. In the
+over black on the left and its alpha as a luma matte on the right. The
+sound comes from the left half only (the matte copy is muted). In the
 Stinger settings tick *Use a Track Matte*, Matte Layout *Same file, side by
 side*, left fill / right matte, same transition point.
 
@@ -322,6 +349,47 @@ Chat activity ("spoke") is designed but switched off until the event logger
 stores chat events. See
 [waterhouse-twitch-overlay #17](https://github.com/JollyGrin/waterhouse-twitch-overlay/issues/17)
 and [#11 here](https://github.com/JollyGrin/waterhouse-remotion/issues/11).
+
+## Media for local compositions
+
+Some compositions play footage that is too large or too private for git
+(`public/session/`, `public/reel/` and `public/fort-riddim/` are gitignored).
+On a fresh clone they show a "Missing media" card naming each missing file
+instead of failing with a 404. Once the files are in place they render
+normally.
+
+| Composition | Needs (under `public/`) | Where it comes from |
+|---|---|---|
+| SessionOpen | `session/head.mp4` | `bun scripts/session/make-bookends.ts <episode.mp4> <out.mp4>` cuts the first 5 s of a finished episode |
+| SessionClose | `session/tail.mp4` | same script, the last 5 s |
+| SessionEpisode | `session/master.mp4` | `bun scripts/session/make-master.ts <work-dir> <capture> <window-start> public/session/master.mp4`, the raw capture cut to `src/session/data/edl.json` |
+| SessionReel | `reel/<slug>-cut.mp4` (the `cutFile` in `src/reel/data/current.json`) | `bun run reel src/reel/data/<slug>.reel.json`, lifted out of the episode master |
+| FortRiddim | `fort-riddim/c1m.mp4`, `c1fx.mp4`, `c2fx.mp4`, `c3m.mp4`, `c3fx.mp4`, `soundtrack.wav`, `logo-white.png`, `poster/{boogie,disc,top,lineup,info}.png` | clips and soundtrack: `bun scripts/fort-riddim/make.ts --c1 IMG_2250.MOV --c2 IMG_2253.MOV --c3 IMG_2246.MOV` (or `FORT_RIDDIM_C1/_C2/_C3`) from Manuel's phone footage; logo and poster cut-outs: copied in by hand from the FORT RIDDIM poster artwork |
+| FortRiddimPromo | `fort-riddim/promo.mp4` | `bun run promo --source FORTRIDDIMPROMO.MP4` (or `FORT_RIDDIM_PROMO_SRC`), Manuel's disc animation |
+| FortRiddimShowcase | `fort-riddim/promo.mp4` | as FortRiddimPromo; `bun run showcase --source FORTRIDDIMPROMO.MP4` |
+
+Ask whoever made the cut for the files, or regenerate them from the sources
+with the commands above.
+
+## macOS-only steps
+
+Everything renders on macOS, Linux and Windows except these, which call
+macOS tools:
+
+- **Poster photo prep** (`bun run poster`, `bun run covers`):
+  `scripts/cutout.swift` uses the Vision framework and needs **macOS 14+**
+  with the Xcode command line tools (`swift`). It lifts the subject out of
+  photos without transparency (a photo that already has an alpha channel
+  skips this) and always runs face detection on the cut-out to frame it, so
+  these two scripts only run on a Mac. Rendering the `SessionPoster`
+  composition itself works anywhere.
+- **Music bed picker** (`scripts/pick-track.ts`): AIFF tracks are decoded
+  with macOS `afconvert` first (Remotion's bundled ffmpeg has no AIFF
+  demuxer). mp3, wav and flac work anywhere. ffmpeg is taken from PATH,
+  else Remotion's bundled copy.
+- **Scheduled cover sync**: `scripts/contrib/covers-cron.sh` is an example
+  launchd wrapper (notifications via `osascript`). Use your OS scheduler to
+  run `bun scripts/sync-covers.ts` elsewhere.
 
 ## Where things are
 

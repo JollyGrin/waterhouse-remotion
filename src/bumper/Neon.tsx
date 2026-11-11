@@ -130,6 +130,8 @@ const NeonAudio: React.FC = () => (
 interface NeonProps {
   guestName: string | null;
   idle: boolean;
+  // Skip the sound (the Track Matte's second copy).
+  muted?: boolean;
 }
 
 /** One neon line: two blurred glows, the tube body, a white core. */
@@ -162,7 +164,7 @@ const Tube: React.FC<{
   );
 };
 
-export const Neon: React.FC<NeonProps> = ({ guestName, idle }) => {
+export const Neon: React.FC<NeonProps> = ({ guestName, idle, muted }) => {
   const realFrame = useCurrentFrame();
   const uid = useId().replace(/:/g, "");
   const frame = idle ? NEON_IDLE_FRAME : realFrame;
@@ -283,7 +285,7 @@ export const Neon: React.FC<NeonProps> = ({ guestName, idle }) => {
 
   return (
     <AbsoluteFill>
-      {idle ? null : <NeonAudio />}
+      {idle || muted ? null : <NeonAudio />}
       <svg width={WIDTH} height={HEIGHT} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} style={{ position: "absolute", inset: 0, display: "block" }}>
         <defs>
           {/* Fixed filter regions: a thin tube's own box would clip its glow

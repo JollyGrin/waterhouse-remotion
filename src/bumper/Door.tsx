@@ -212,9 +212,11 @@ const DoorAudio: React.FC = () => (
 interface DoorProps {
   guestName: string | null;
   idle: boolean;
+  // Skip the sound (the Track Matte's second copy).
+  muted?: boolean;
 }
 
-export const Door: React.FC<DoorProps> = ({ guestName, idle }) => {
+export const Door: React.FC<DoorProps> = ({ guestName, idle, muted }) => {
   const realFrame = useCurrentFrame();
   // SVG ids must be unique per instance: the strip renders many copies.
   const uid = useId().replace(/:/g, "");
@@ -302,7 +304,7 @@ export const Door: React.FC<DoorProps> = ({ guestName, idle }) => {
 
   return (
     <AbsoluteFill>
-      {idle ? null : <DoorAudio />}
+      {idle || muted ? null : <DoorAudio />}
       <AbsoluteFill style={{ transform: camera, transformOrigin: "50% 50%" }}>
         <AbsoluteFill
           style={{

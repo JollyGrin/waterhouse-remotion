@@ -12,7 +12,7 @@
  *
  * Formats: mp3 is copied as-is. flac/wav are encoded to mp3. aiff goes through
  * macOS afconvert first — Remotion's bundled ffmpeg has no AIFF demuxer, and
- * Chromium cannot play AIFF either.
+ * Chromium cannot play AIFF either. (macOS only: elsewhere, convert AIFF first.)
  *
  * audioStartFrom is derived by scanning 30-150Hz energy for the drop, so the
  * video opens on the good part of the track instead of a quiet intro.
@@ -22,15 +22,14 @@ import { execFileSync } from "child_process";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { basename, extname, join } from "path";
+import { ffEnv, findBin } from "./lib/ff";
 
 const STATE_PATH = "weekly/state.json";
 const AUDIO_DIR = "public/audio";
 const AUDIO_EXTS = [".mp3", ".wav", ".flac", ".aiff", ".aif", ".m4a"];
 
-// Remotion ships its own ffmpeg; it needs its sibling dylibs on the library path.
-const COMPOSITOR_DIR =
-  "/Users/manuel/.bun/install/cache/@remotion/compositor-darwin-arm64@4.0.410@@@1";
-const FFMPEG = join(COMPOSITOR_DIR, "ffmpeg");
+// ffmpeg from PATH, else the one Remotion ships (see scripts/lib/ff.ts).
+const FFMPEG = findBin("ffmpeg");
 
 type HistoryEntry = {
   date: string;
@@ -108,9 +107,8 @@ function slugify(name: string): string {
 // --- audio -----------------------------------------------------------------
 
 function ffmpeg(args: string[]) {
-  execFileSync(FFMPEG, ["-hide_banner", "-v", "error", ...args], {
-    env: { ...process.env, DYLD_LIBRARY_PATH: COMPOSITOR_DIR },
-  });
+  if (!FFMPEG) throw new Error("ffmpeg not found: install it on PATH, or run `bun install` for Remotion's copy");
+  execFileSync(FFMPEG, ["-hide_banner", "-v", "error", ...args], { env: ffEnv(FFMPEG) });
 }
 
 /** Put the track into public/audio as browser-playable mp3, return the path under public/. */

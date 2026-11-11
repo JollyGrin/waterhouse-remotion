@@ -13,18 +13,16 @@
  * ffmpeg on the render box. ffmpeg is only used to decode the .ogg sources.
  */
 
-import { existsSync, readFileSync, writeFileSync } from "fs";
+import { readFileSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
+import { bundledBin, ffEnv, pathBin } from "./lib/ff";
 import { clacks, flapPlan, isBakedClack } from "../src/bumper/flap-plan";
 
 const OUT_DIR = "public/audio/bumper";
 const SR = 48000;
 
-const FFMPEG = [
-  "node_modules/@remotion/compositor-linux-x64-gnu/ffmpeg",
-  "node_modules/@remotion/compositor-linux-arm64-gnu/ffmpeg",
-  "node_modules/@remotion/compositor-darwin-arm64/ffmpeg",
-  "node_modules/@remotion/compositor-darwin-x64/ffmpeg",
-].find((p) => existsSync(p));
+const FFMPEG = bundledBin("ffmpeg") ?? pathBin("ffmpeg");
 
 // --- WAV in / out (48 kHz mono pcm_s16le, like the other kits) ---
 
@@ -89,11 +87,14 @@ export function writeWav(path: string, samples: Float32Array): void {
 function decode(src: string): Float32Array {
   if (/\.wav$/.test(src)) return readWav(src);
   if (!FFMPEG) throw new Error("no ffmpeg found to decode " + src);
-  const tmp = `/tmp/waterhouse-bumper-${src.replace(/[^a-z0-9]/gi, "-")}.wav`;
-  const res = Bun.spawnSync([
-    FFMPEG, "-hide_banner", "-loglevel", "error", "-y",
-    "-i", src, "-ac", "1", "-ar", String(SR), "-c:a", "pcm_s16le", tmp,
-  ]);
+  const tmp = join(tmpdir(), `waterhouse-bumper-${src.replace(/[^a-z0-9]/gi, "-")}.wav`);
+  const res = Bun.spawnSync(
+    [
+      FFMPEG, "-hide_banner", "-loglevel", "error", "-y",
+      "-i", src, "-ac", "1", "-ar", String(SR), "-c:a", "pcm_s16le", tmp,
+    ],
+    { env: ffEnv(FFMPEG) },
+  );
   if (res.exitCode !== 0) throw new Error(res.stderr.toString());
   return readWav(tmp);
 }
@@ -119,7 +120,7 @@ export function resample(x: Float32Array, rate: number): Float32Array {
 
 /** One-pole low-pass, applied `passes` times for a steeper roll-off. */
 export function lowpass(x: Float32Array, hz: number, passes = 1): Float32Array {
-  let out = Float32Array.from(x);
+  const out = Float32Array.from(x);
   const a = 1 - Math.exp((-2 * Math.PI * hz) / SR);
   for (let p = 0; p < passes; p++) {
     let y = 0;

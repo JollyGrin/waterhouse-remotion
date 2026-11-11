@@ -92,32 +92,35 @@ const Checkerboard: React.FC = () => (
   />
 );
 
-export const SessionBumper: React.FC<SessionBumperProps> = ({
+// `muted` is not in the schema: only BumperMatte sets it, on its second copy,
+// so the sound plays once.
+export const SessionBumper: React.FC<SessionBumperProps & { muted?: boolean }> = ({
   idea,
   guestName,
   idle = false,
   preview = false,
   vhsDate,
+  muted = false,
 }) => {
   return (
     <AbsoluteFill>
       {preview ? <Checkerboard /> : null}
       {idea === "door" ? (
-        <Door guestName={guestName} idle={idle} />
+        <Door guestName={guestName} idle={idle} muted={muted} />
       ) : idea === "lamp" ? (
-        <Lamp guestName={guestName} idle={idle} />
+        <Lamp guestName={guestName} idle={idle} muted={muted} />
       ) : idea === "paper" ? (
-        <Paper guestName={guestName} idle={idle} />
+        <Paper guestName={guestName} idle={idle} muted={muted} />
       ) : idea === "neon" ? (
-        <Neon guestName={guestName} idle={idle} />
+        <Neon guestName={guestName} idle={idle} muted={muted} />
       ) : idea === "vhs" ? (
-        <Vhs guestName={guestName} idle={idle} date={vhsDate ?? TODAY_STAMP} />
+        <Vhs guestName={guestName} idle={idle} muted={muted} date={vhsDate ?? TODAY_STAMP} />
       ) : idea === "fader" ? (
-        <Fader guestName={guestName} idle={idle} />
+        <Fader guestName={guestName} idle={idle} muted={muted} />
       ) : idea === "flap" ? (
-        <Flap guestName={guestName} idle={idle} />
+        <Flap guestName={guestName} idle={idle} muted={muted} />
       ) : (
-        <Corner guestName={guestName} idle={idle} />
+        <Corner guestName={guestName} idle={idle} muted={muted} />
       )}
     </AbsoluteFill>
   );

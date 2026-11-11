@@ -39,7 +39,8 @@ export const BumperMatte: React.FC<SessionBumperProps> = (props) => {
           filter: "brightness(0) invert(1)",
         }}
       >
-        <SessionBumper {...clip} />
+        {/* Muted: the fill half already carries the sound. */}
+        <SessionBumper {...clip} muted />
       </div>
     </AbsoluteFill>
   );

@@ -144,9 +144,11 @@ const PaperAudio: React.FC = () => (
 interface PaperProps {
   guestName: string | null;
   idle: boolean;
+  // Skip the sound (the Track Matte's second copy).
+  muted?: boolean;
 }
 
-export const Paper: React.FC<PaperProps> = ({ guestName, idle }) => {
+export const Paper: React.FC<PaperProps> = ({ guestName, idle, muted }) => {
   const realFrame = useCurrentFrame();
   // SVG ids must be unique per instance: the strip renders many copies.
   const uid = useId().replace(/:/g, "");
@@ -265,7 +267,7 @@ export const Paper: React.FC<PaperProps> = ({ guestName, idle }) => {
 
   return (
     <AbsoluteFill>
-      {idle ? null : <PaperAudio />}
+      {idle || muted ? null : <PaperAudio />}
 
       {/* The sheet's shadow on whatever is below, once it lifts. */}
       {shadowOpacity > 0 ? (

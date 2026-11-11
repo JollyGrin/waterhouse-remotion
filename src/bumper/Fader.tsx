@@ -202,9 +202,11 @@ const FaderAudio: React.FC = () => (
 interface FaderProps {
   guestName: string | null;
   idle: boolean;
+  // Skip the sound (the Track Matte's second copy).
+  muted?: boolean;
 }
 
-export const Fader: React.FC<FaderProps> = ({ guestName, idle }) => {
+export const Fader: React.FC<FaderProps> = ({ guestName, idle, muted }) => {
   const realFrame = useCurrentFrame();
   const uid = useId().replace(/:/g, "");
   const frame = idle ? FADER_IDLE_FRAME : realFrame;
@@ -308,7 +310,7 @@ export const Fader: React.FC<FaderProps> = ({ guestName, idle }) => {
 
   return (
     <AbsoluteFill>
-      {idle ? null : <FaderAudio />}
+      {idle || muted ? null : <FaderAudio />}
       <svg width={WIDTH} height={HEIGHT} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} style={{ position: "absolute", inset: 0, display: "block" }}>
         <defs>
           {/* The console: everything but the panel's rectangle (inset 1 px,
