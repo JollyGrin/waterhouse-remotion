@@ -263,6 +263,9 @@ def main(argv=None) -> int:
                     help="keep the original channels (default: mix the two mics to a centred, level-matched track)")
     ap.add_argument("--no-clean", action="store_true",
                     help="don't also write <name>.clean.mp4 (same cut, no captions/card text; input for sesh-upscale)")
+    ap.add_argument("--no-intro", action="store_true", help="don't prepend the channel ident to <name>.edited.mp4")
+    ap.add_argument("--intro", metavar="FILE",
+                    help="ident to prepend instead of the bundled Fuse (video with alpha; see README 'Intro')")
     ap.add_argument("--no-loudnorm", action="store_true", help="skip loudness normalisation")
     ap.add_argument("--lufs", type=float, default=-14.0, help="loudness target (default -14 LUFS, true peak -1 dBTP)")
     args = ap.parse_args(argv)
@@ -292,6 +295,13 @@ def main(argv=None) -> int:
     params = Params(silence_max=args.silence_max, silence_target=args.silence_target, silence_db=args.silence_db)
     if args.fillers:
         params.fillers = [f.strip().lower() for f in args.fillers.split(",") if f.strip()]
+
+    from . import intro as intro_mod
+
+    def intro_spec(default):
+        if args.no_intro:
+            return None
+        return intro_mod.make_spec(args.intro) if args.intro else default
 
     if decisions_in is None:
         wav16 = work / "audio16k.wav"
@@ -404,6 +414,7 @@ def main(argv=None) -> int:
             "skipped_gaps": plan["skipped_gaps"],
             "keep_segments": plan["keep_segments"],
             "inserts": inserts,
+            "intro": intro_spec(intro_mod.make_spec()),
             "audio": {"mix": "original" if args.keep_stereo else "centred",
                       "loudnorm": None if args.no_loudnorm else {"i": args.lufs, "tp": -1.0}},
             "caption_words": plan["caption_words"],
@@ -413,6 +424,8 @@ def main(argv=None) -> int:
     else:
         decisions = decisions_in
         log(f"loaded decisions from {args.from_decisions}")
+        # recorded intro wins unless overridden; decisions from before the intro existed get the default
+        decisions["intro"] = intro_spec(decisions["intro"] if "intro" in decisions else intro_mod.make_spec())
 
     s = decisions["stats"]
     print("\n=== PLAN ===")
@@ -422,6 +435,9 @@ def main(argv=None) -> int:
     pt = decisions["pretake"]
     print(f"take start: {fmt_t(pt['take_start_s'])} \"{pt['text']}\"  (cut 0 -> {fmt_t(pt['cut_end_s'])}; auto_cut={pt['auto_cut']})")
     print(f"A/V offset applied: {decisions['av_offset']['applied_s'] * 1000:+.0f}ms ({decisions['av_offset']['applied_reason']})")
+    it = decisions["intro"]
+    print(f"intro: {it['file']} ({it['dur_s']:.2f}s), interview starts under it at {it['open_s']:.3f}s (edited outputs only)"
+          if it else "intro: none")
     print("review list (NOT cut):")
     for r in decisions["review"]:
         print(f"  {fmt_t(r.get('start_s', 0))}-{fmt_t(r.get('end_s', 0))} [{r.get('kind')}] {r.get('note')}")
@@ -436,7 +452,7 @@ def main(argv=None) -> int:
     st = Style(**decisions.get("style", asdict(st)))
     res = render(src, info, decisions, out_mp4, out_srt, work, st, fade_ms=decisions["params"]["fade_ms"],
                  log=lambda m: log(m), out_clean=out_clean)
-    decisions["render"] = {k: v for k, v in res.items() if k in ("audio_mix", "loudness", "inserts")}
+    decisions["render"] = {k: v for k, v in res.items() if k in ("audio_mix", "loudness", "inserts", "intro")}
     out_dec.write_text(json.dumps(decisions, indent=1))
     log(f"done: {out_mp4} ({fmt_t(res['output_duration_s'])}), {out_srt}, {res['caption_lines']} caption lines")
     if out_clean:

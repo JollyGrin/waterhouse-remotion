@@ -12,8 +12,8 @@ Outputs, next to `-o` (default: next to the input):
 
 | file | what |
 |---|---|
-| `<name>.edited.mp4` | the edit: h264 + aac, captions burned in, one encode pass |
-| `<name>.clean.mp4` | the same cut and audio with no captions and blank title cards: input for `sesh-upscale` (skip with `--no-clean`) |
+| `<name>.edited.mp4` | the edit: the [Fuse intro](#intro) then the interview, h264 + aac, captions burned in, one encode pass |
+| `<name>.clean.mp4` | the same cut and audio with no intro, no captions and blank title cards: input for `sesh-upscale` (skip with `--no-clean`) |
 | `<name>.edited.srt` | the same captions, timed to the edited timeline |
 | `<name>.decisions.json` | every decision: cuts (with kind + context), keep segments, A/V offset (both checks), pre-take cut, review list, stats |
 | `<name>.work/` | cache: transcript, silences, A/V analysis, contact sheet, LLM replies, intermediate wavs |
@@ -58,13 +58,14 @@ recomputed.
 | `--replace OLD=NEW` | | fix a misheard word in the captions (whole word, repeatable) |
 | `--cut START-END` | | also cut this range (input-file time, e.g. `20:03-20:29`; repeatable) |
 | `--move-to-front START-END` | | play this range first, e.g. an intro recorded at the end (repeatable) |
-
 | `--insert-clip AT FILE START-END` | | insert a clip from another file before input time AT (repeatable) |
 | `--clip-fade S` / `--clip-gain DB` | 0.4 / -6 | clip audio fades, and clip level relative to the speech |
 | `--title-card AT TEXT` | | black card, white Inter Bold text, before input time AT (after any clip at AT) |
 | `--card-dur S` | 3.5 | title card length (0.5s text fades) |
 | `--keep-stereo` | | keep the original mic channels (default: centred mic mix, see below) |
 | `--lufs` / `--no-loudnorm` | -14 | loudness target (true peak -1 dBTP) / skip it |
+| `--no-intro` | | don't prepend the channel ident (output as before the intro existed) |
+| `--intro FILE` | Fuse | prepend another ident: a video with alpha (see [Intro](#intro)) |
 
 `--cut`, `--move-to-front`, `--insert-clip` and `--title-card` take times from the input file, like the review list. Each
 edge is moved to the quietest point in the nearest gap between words. Example (the <guest>
@@ -81,6 +82,37 @@ An insert at AT goes before the kept segment starting within 2s of AT; otherwise
 segment is split at the quietest point between words. Inserted clips are conformed to the
 interview's size and fps, level-matched to the speech, and fade in and out. A clip directly
 followed by a title card also dips to black. Captions never run over an insert.
+
+## Intro
+
+`<name>.edited.mp4` and `<name>.edited.1080p.mp4` open with **Fuse**, the Waterhouse Sessions
+ident (5 s, with alpha). The interview starts playing underneath at 3.933 s (Fuse frame 118),
+when the ident's rings open onto it, so the output is 3.933 s + the edit. `<name>.clean.mp4`
+never gets the intro: it stays the upscale input, and `sesh-overlay` adds the intro at 1080p.
+
+- **Video:** the ident is conformed to the output's size and fps (360p gets a downscaled
+  ident) and composited in the same encode pass as the captions; no extra encode.
+- **Audio:** the interview is loudness-normalised first, without the intro. Then the intro
+  soundtrack gets one gain so its integrated loudness equals the speech's (e.g. -10.9 → -14
+  LUFS), capped so its true peak stays under -1 dBTP, and is mixed over the start of the
+  interview. Its own mix is untouched (no EQ, compression or limiting).
+- **Captions:** shifted by the intro offset, burned and in the `.srt`. None show while the
+  ident is on screen: a line that would start under it starts when it ends (5.0 s).
+- **decisions.json:** `intro` records the file, `open_s` and `level_lu` (relative level,
+  default 0); `render.intro` records the measured LUFS and the applied gain, which
+  `sesh-overlay` reuses. `--from-decisions` renders the recorded intro unless `--no-intro`
+  or `--intro` is given. Decisions from before the intro existed get the default Fuse.
+
+Asset: `src/sesh_edit/assets/intro/fuse-16x9.{webm,flac,json}` was made from the ProRes 4444
+master rendered in the waterhouse-remotion repo (JollyGrin/waterhouse-remotion#28, `Fuse-16x9.mov`):
+`ffmpeg -i Fuse-16x9.mov -an -c:v libvpx-vp9 -pix_fmt yuva420p -crf 30 -b:v 0 -auto-alt-ref 0 fuse-16x9.webm`,
+`ffmpeg -i Fuse-16x9.mov -vn -c:a flac fuse-16x9.flac`. ffmpeg only decodes VP9 alpha with
+`-c:v libvpx-vp9` before `-i` (the code does this).
+
+`--intro FILE` takes any video with alpha (VP8/VP9 WebM, ProRes 4444, ...). Audio comes from
+a `<stem>.flac`/`<stem>.wav` next to it, else from the file. The point where the interview
+starts comes from a `<stem>.json` (`{"open_s": 3.933}`), else from the first frame that is
+not fully opaque (mean alpha < 0.999), else the end (hard cut).
 
 ## 1080p / upscaling
 
@@ -116,7 +148,8 @@ the log tail. nvidia-smi samples go to `DIR/gpu.csv`. A Real-ESRGAN error (e.g. 
 VRAM: lower `--tile`) stops the job with `state: failed` and never marks the chunk done.
 
 `sesh-overlay` checks that the video is the clean cut of those decisions (same fps and frame count),
-copies the audio, and writes a matching `.srt`. Background and measurements:
+prepends the intro recorded in the decisions (mixing its soundtrack over the clean cut's audio at
+the gain sesh-edit used; with no intro the audio is copied), and writes a matching `.srt`. Background and measurements:
 [docs/quality-and-upscaling.md](docs/quality-and-upscaling.md).
 
 ## Machines & getting videos in (Dropbox → GPU box)

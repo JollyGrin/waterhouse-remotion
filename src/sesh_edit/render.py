@@ -5,7 +5,8 @@ title cards). Audio is assembled sample-accurately in numpy (10ms fades at every
 longer fades on clips), mixed to a centred track and loudness-normalised. Video frames are
 picked per output frame from the right source, captions are burned in, and everything is
 encoded once (h264 + aac). The same pass can also write a clean copy (no captions, blank
-title cards) for upscaling; sesh-overlay then draws the text at the upscaled resolution."""
+title cards) for upscaling; sesh-overlay then draws the text at the upscaled resolution.
+The captioned output also gets the channel ident in front (see intro.py); the clean copy never does."""
 from __future__ import annotations
 
 import subprocess
@@ -238,10 +239,11 @@ class Compositor:
 
 def render(src: str, info: dict, decisions: dict, out_mp4: Path, out_srt: Path, work: Path, st: Style,
            fade_ms: float = 10.0, log=print, out_clean: Path | None = None) -> dict:
-    """Writes out_mp4 (captions + card text burned in) and, if given, out_clean: the same cut
-    with no captions and blank title cards, for upscaling + sesh-overlay at a higher resolution."""
+    """Writes out_mp4 (intro + captions + card text burned in) and, if given, out_clean: the same
+    cut with no intro, no captions and blank title cards, for upscaling + sesh-overlay."""
     import soundfile as sf
 
+    from . import intro as intro_mod
     from .audio import loudnorm_2pass, mix_mics
 
     W, H, fps = info["width"], info["height"], info["fps"]
@@ -250,6 +252,7 @@ def render(src: str, info: dict, decisions: dict, out_mp4: Path, out_srt: Path, 
     offset = decisions["av_offset"]["applied_s"]
     aopt = decisions.get("audio", {"mix": "centred", "loudnorm": {"i": -14.0, "tp": -1.0}})
     tm = TimeMap(keeps, inserts)
+    intro = decisions.get("intro")
 
     # ---- audio
     log("    audio: decode, shift, mix, cut with fades")
@@ -276,19 +279,42 @@ def render(src: str, info: dict, decisions: dict, out_mp4: Path, out_srt: Path, 
         ln_info = loudnorm_2pass(cut_wav, final_wav, aopt["loudnorm"]["i"], aopt["loudnorm"]["tp"], sr)
         log(f"      {ln_info['input_i']:.1f} -> {ln_info['output_i']:.1f} LUFS, true peak {ln_info['output_tp']:.1f} dBTP")
         cut_wav = final_wav
+    edit_wav, intro_info, off = cut_wav, None, 0
+    if intro:
+        # after loudnorm: the interview's levelling never touches the ident, and the clean cut keeps its audio
+        body, _ = sf.read(str(cut_wav), dtype="float32", always_2d=True)
+        mixed, intro_info = intro_mod.mix_audio(body, sr, intro, fps, speech_lufs=ln_info["output_i"] if ln_info else None)
+        del body
+        edit_wav = work / "audio_intro.wav"
+        sf.write(str(edit_wav), mixed, sr, subtype="FLOAT")
+        del mixed
+        off = intro_info["offset_frames"]
+        if intro_info["audio"]:
+            log(f"    intro {intro['file']}: interview from {intro_info['offset_s']:.3f}s (frame {off}); "
+                f"intro {intro_info['intro_lufs']:.1f} LUFS, speech {intro_info.get('speech_lufs', float('nan')):.1f} LUFS "
+                f"-> gain {intro_info['gain_db']:+.1f} dB (intro section true peak {intro_info['intro_section_tp']:.1f} dBTP)")
+        else:
+            log(f"    intro {intro['file']}: interview from {intro_info['offset_s']:.3f}s (frame {off}); no intro audio")
 
     # ---- captions
     lines, rend = caption_lines(decisions["caption_words"], tm, W, H, st)
-    write_srt(lines, out_srt)
+    if intro:
+        lines = intro_mod.hold_captions(lines, intro, fps)
+    write_srt(intro_mod.shift_lines(lines, off / fps) if off else lines, out_srt)
 
     # ---- video
     n_out = int(round(n_samples / sr * fps))
     log(f"    video: {n_out} output frames, {len(tm.items)} timeline items ({len(inserts)} inserts)")
     outs = [(out_mp4, True)] + ([(out_clean, False)] if out_clean else [])
-    encs = [(_encoder(path, W, H, fps, cut_wav), overlays) for path, overlays in outs]
+    encs = [(_encoder(path, W, H, fps, edit_wav if overlays else cut_wav), overlays) for path, overlays in outs]
     sources: dict[str, FrameSource] = {src: FrameSource(src, W, H, fps, conform=False)}
     comp = Compositor(tm, lines, rend, W, H, fps)
+    ident = intro_mod.IntroFrames(intro, W, H, fps) if intro else None
     try:
+        if ident:  # ident alone until the interview starts underneath it
+            black = np.zeros((H, W, 3), np.uint8)
+            for _ in range(off):
+                encs[0][0].stdin.write(ident.over(black).tobytes())
         for n in range(n_out):
             k, it, local = comp.item(n)
             if it["kind"] == "main":
@@ -302,7 +328,11 @@ def render(src: str, info: dict, decisions: dict, out_mp4: Path, out_srt: Path, 
             else:
                 frame = np.zeros((H, W, 3), np.uint8)  # title card background; text is an overlay
             for enc, overlays in encs:
-                enc.stdin.write((comp.overlay(n, frame) if overlays else frame).tobytes())
+                if overlays:
+                    f = comp.overlay(n, frame)
+                    enc.stdin.write((ident.over(f) if ident else f).tobytes())
+                else:
+                    enc.stdin.write(frame.tobytes())
             if n % (int(fps) * 120) == 0:
                 log(f"      {n / fps / 60:5.1f}/{n_out / fps / 60:.1f} min")
     finally:
@@ -311,8 +341,10 @@ def render(src: str, info: dict, decisions: dict, out_mp4: Path, out_srt: Path, 
             enc.wait()
         for s in sources.values():
             s.close()
+        if ident:
+            ident.close()
     if any(enc.returncode != 0 for enc, _ in encs):
         raise RuntimeError("ffmpeg encode failed")
-    return {"output_duration_s": round(n_samples / sr, 3), "caption_lines": len(lines), "frames": n_out,
-            "audio_mix": mix_info, "loudness": ln_info,
+    return {"output_duration_s": round(n_samples / sr + off / fps, 3), "caption_lines": len(lines),
+            "frames": n_out + off, "clean_frames": n_out, "audio_mix": mix_info, "loudness": ln_info, "intro": intro_info,
             "inserts": [{k_: v for k_, v in it.items() if k_ != "dur"} for it in tm.items if it["kind"] != "main"]}
