@@ -1,3 +1,10 @@
+# Waterhouse video
+
+## Two tools in this repo
+
+- **Promo clips (Remotion), at the repo root.** Short vertical clips, stingers and posters rendered from live data. Bun only. Everything below this section is about this tool.
+- **Long-form interview editor (`sesh-edit`), in [`longform/`](longform/).** Python + uv. It auto-edits the Waterhouse Sessions interviews: cuts, captions, upscaling. Heavy runs happen on the GPU box. See [`longform/README.md`](longform/README.md).
+
 # Waterhouse promo videos
 
 Remotion project that renders the vertical (1080×1920, 30 fps) clips Waterhouse

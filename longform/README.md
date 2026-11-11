@@ -4,6 +4,10 @@ Auto-edits longform **Waterhouse Sessions** interview videos. It replaces the ma
 Descript pass: cut fillers, cut pre-take chatter, tighten silences, fix A/V lag, and burn
 karaoke captions in the house style. Runs locally on Apple Silicon.
 
+This tool lives in `longform/` of [JollyGrin/waterhouse-video](https://github.com/JollyGrin/waterhouse-video)
+(the Remotion promo clips are at the repo root). Every command below runs from `longform/`
+(`cd longform`), or from the repo root with `uv run --project longform …`.
+
 ```
 uv run sesh-edit <input.mov> [-o out.mp4] [--review]
 ```
@@ -104,7 +108,7 @@ never gets the intro: it stays the upscale input, and `sesh-overlay` adds the in
   or `--intro` is given. Decisions from before the intro existed get the default Fuse.
 
 Asset: `src/sesh_edit/assets/intro/fuse-16x9.{webm,flac,json}` was made from the ProRes 4444
-master rendered in the waterhouse-remotion repo (JollyGrin/waterhouse-remotion#28, `Fuse-16x9.mov`):
+master rendered by the Remotion project at the root of this repo (JollyGrin/waterhouse-video#28, `Fuse-16x9.mov`):
 `ffmpeg -i Fuse-16x9.mov -an -c:v libvpx-vp9 -pix_fmt yuva420p -crf 30 -b:v 0 -auto-alt-ref 0 fuse-16x9.webm`,
 `ffmpeg -i Fuse-16x9.mov -vn -c:a flac fuse-16x9.flac`. ffmpeg only decodes VP9 alpha with
 `-c:v libvpx-vp9` before `-i` (the code does this).
@@ -159,7 +163,7 @@ Three machines can drive this tool. Heavy work (transcription, x4plus upscaling)
 
 | machine | role | how to reach it |
 |---|---|---|
-| **GPU box** `<gpu-host>` (Windows 10, RTX 3070) | runs the pipeline | Mac: `ssh gpu` (PowerShell: chain with `;`, never `&`). Any machine: T3 linked environment **<gpu-host>**, project `waterhouse-video-editing` |
+| **GPU box** `<gpu-host>` (Windows 10, RTX 3070) | runs the pipeline | Mac: `ssh gpu` (PowerShell: chain with `;`, never `&`). Any machine: T3 linked environment **<gpu-host>**, project `waterhouse-video` |
 | Dean's MacBook (M3 Max) | runs it too (MPS); orchestration | local |
 | <vps> (VPS) | orchestration only, no GPU | steers the GPU box through T3 only (SSH from the VPS to the GPU box is blocked by design) |
 
@@ -167,7 +171,7 @@ GPU box layout:
 
 | path | what |
 |---|---|
-| `C:\Users\<you>\git\waterhouse\waterhouse-video-editing` | this repo (`main`) |
+| `C:\Users\<you>\git\waterhouse\waterhouse-video` | this repo (`main`); the tool is in `longform\` |
 | `C:\Users\<you>\Videos\sesh-in\` | **inbox**: source videos |
 | `C:\Users\<you>\Videos\sesh-out\` | **outbox**: edits, decisions, upscales |
 | `C:\Users\<you>\tools\realesrgan\` | Real-ESRGAN ncnn-vulkan (Windows build, v0.2.5.0). User env `SESH_REALESRGAN` points here |
@@ -198,7 +202,7 @@ On Mac/Linux it's the same `curl -L -o … "…&dl=1"`.
 ### Full run on the GPU box (trim → upscale → caption)
 
 ```powershell
-cd C:\Users\<you>\git\waterhouse\waterhouse-video-editing
+cd C:\Users\<you>\git\waterhouse\waterhouse-video\longform
 $in  = "C:\Users\<you>\Videos\sesh-in\<name>.mp4"
 $out = "C:\Users\<you>\Videos\sesh-out\<name>"
 uv run sesh-edit $in -o "$out.edited.mp4"                     # trim + 360p preview + <name>.clean.mp4 + decisions.json
@@ -258,7 +262,8 @@ a T3 thread on the GPU box (it needs a logged-in Windows session; the T3 app sta
    decisions are made in video time.
 6. **Captions**: Inter Bold (OFL, bundled), single line of ≤7 words (breaks at sentence
    ends, long pauses, or 88% width), centred 84.5% down, 68px at 1080p (calibrated
-   against the text width in `reference/`), scaled by frame height, soft drop shadow, no
+   against the text width of reference frames; example frames kept in the private
+   waterhouse-video-editing repo), scaled by frame height, soft drop shadow, no
    outline. Spoken words are white; the current word is white on a rounded `#00AEFF` box;
    upcoming words are 50% white. Rendered with Pillow; each (line, word) state is cached.
 7. **Audio finishing** (default; `--keep-stereo` turns it off). Each RODE mic is recorded
