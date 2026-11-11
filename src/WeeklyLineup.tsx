@@ -2,6 +2,7 @@ import React from "react";
 import { z } from "zod";
 import {
   AbsoluteFill,
+  Audio,
   Img,
   interpolate,
   spring,
@@ -9,6 +10,7 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
+import { useAudioData, visualizeAudio } from "@remotion/media-utils";
 import { TransitionSeries, linearTiming } from "@remotion/transitions";
 import { slide } from "@remotion/transitions/slide";
 import { fade } from "@remotion/transitions/fade";
@@ -26,6 +28,9 @@ const { fontFamily: bodyFont } = loadGrotesk("normal", {
 const ArtistEventSchema = z.object({
   artistName: z.string(),
   artistImage: z.string().nullable(),
+  // "contain" letterboxes the image instead of cropping it — use it for logo
+  // cards, whose wordmarks get sliced by the default "cover" framing.
+  imageFit: z.enum(["cover", "contain"]).nullable().optional(),
   genre: z.string().nullable(),
   instagram: z.string().nullable(),
   website: z.string().nullable(),
@@ -38,13 +43,19 @@ export const WeeklyLineupSchema = z.object({
   weekLabel: z.string(),
   dateRange: z.string(),
   artists: z.array(ArtistEventSchema),
+  // Path under public/ (e.g. "audio/song.mp3") or a full URL.
+  // When set, the song plays over the video and the outro logo pulses to its beat.
+  audioTrack: z.string().nullable().optional(),
+  // Seconds into the track to start playback from — use it to skip a quiet
+  // intro and land the video on the good part of the song.
+  audioStartFrom: z.number().optional(),
 });
 
 export type WeeklyLineupProps = z.infer<typeof WeeklyLineupSchema>;
 
 const ARTIST_DURATION = 4 * 30;
 const INTRO_DURATION = 3 * 30;
-const OUTRO_DURATION = 2.5 * 30;
+const OUTRO_DURATION = 5 * 30;
 const TRANSITION_DURATION = 12;
 
 export function getCompositionDuration(artistCount: number): number {
@@ -154,17 +165,28 @@ const IntroCard: React.FC<{ weekLabel: string; dateRange: string }> = ({
         padding: 80,
       }}
     >
-      <WaterhouseLogo
-        scale={interpolate(logoSpring, [0, 1], [0.85, 1])}
-        opacity={logoSpring}
-      />
+      {/* Same 2x scale as the outro logo; the transform doesn't take layout
+          space, so reserve room for the overflow. */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          height: 620,
+        }}
+      >
+        <WaterhouseLogo
+          scale={interpolate(logoSpring, [0, 1], [1.7, 2])}
+          opacity={logoSpring}
+        />
+      </div>
 
       <div
         style={{
           width: lineWidth,
           height: 3,
           background: "#ffffff",
-          marginTop: 48,
+          marginTop: 24,
           marginBottom: 48,
         }}
       />
@@ -204,6 +226,7 @@ const IntroCard: React.FC<{ weekLabel: string; dateRange: string }> = ({
 const ArtistCard: React.FC<{
   artistName: string;
   artistImage: string | null;
+  imageFit?: "cover" | "contain" | null;
   genre: string | null;
   instagram: string | null;
   website: string | null;
@@ -214,6 +237,7 @@ const ArtistCard: React.FC<{
 }> = ({
   artistName,
   artistImage,
+  imageFit,
   genre,
   instagram,
   website,
@@ -245,9 +269,15 @@ const ArtistCard: React.FC<{
     delay: 10,
   });
 
-  const imageScale = interpolate(frame, [0, durationInFrames], [1.05, 1.15], {
-    extrapolateRight: "clamp",
-  });
+  // Logo cards letterbox and stay under 1x, so the wordmark can never be pushed
+  // out of frame by the Ken-Burns zoom; photos keep the original crop-and-push-in.
+  const isContain = imageFit === "contain";
+  const imageScale = interpolate(
+    frame,
+    [0, durationInFrames],
+    isContain ? [0.74, 0.82] : [1.05, 1.15],
+    { extrapolateRight: "clamp" },
+  );
 
   // Monochrome accent rotation - keeps brand feel
   const accents = ["#ffffff", "#cccccc", "#ffffff", "#aaaaaa", "#ffffff"];
@@ -273,8 +303,9 @@ const ArtistCard: React.FC<{
             style={{
               width: "100%",
               height: "100%",
-              objectFit: "cover",
-              objectPosition: "center top",
+              objectFit: isContain ? "contain" : "cover",
+              // Sit a contained logo high enough to clear the bottom gradient.
+              objectPosition: isContain ? "center 12%" : "center top",
               transform: `scale(${imageScale})`,
             }}
           />
@@ -508,8 +539,51 @@ const ArtistCard: React.FC<{
   );
 };
 
+// --- Beat-reactive logo (outro) ---
+// Samples the song's low frequencies at the current frame and maps the
+// kick energy onto brightness, glow and a small scale pulse.
+const BeatLogo: React.FC<{
+  audioSrc: string;
+  audioOffsetFrames: number;
+  scale: number;
+  opacity: number;
+}> = ({ audioSrc, audioOffsetFrames, scale, opacity }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const audioData = useAudioData(audioSrc);
+
+  let beat = 0;
+  if (audioData) {
+    const freq = visualizeAudio({
+      audioData,
+      frame: frame + audioOffsetFrames,
+      fps,
+      numberOfSamples: 32,
+    });
+    // Low bins = kick/bass energy
+    const bass = (freq[0] + freq[1] + freq[2] + freq[3]) / 4;
+    beat = interpolate(bass, [0.1, 0.5], [0, 1], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+    });
+  }
+
+  return (
+    <div
+      style={{
+        filter: `brightness(${1 + beat * 0.9}) drop-shadow(0 0 ${beat * 45}px rgba(255, 255, 255, ${0.35 + beat * 0.45}))`,
+      }}
+    >
+      <WaterhouseLogo scale={scale * (1 + beat * 0.05)} opacity={opacity} />
+    </div>
+  );
+};
+
 // --- Outro Card ---
-const OutroCard: React.FC = () => {
+const OutroCard: React.FC<{
+  audioTrack?: string | null;
+  audioOffsetFrames: number;
+}> = ({ audioTrack, audioOffsetFrames }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
@@ -520,6 +594,8 @@ const OutroCard: React.FC = () => {
     config: { damping: 200 },
     delay: 12,
   });
+
+  const logoScale = interpolate(logoSpring, [0, 1], [1.7, 2]);
 
   return (
     <AbsoluteFill
@@ -532,10 +608,28 @@ const OutroCard: React.FC = () => {
         padding: 80,
       }}
     >
-      <WaterhouseLogo
-        scale={interpolate(logoSpring, [0, 1], [1.7, 2])}
-        opacity={logoSpring}
-      />
+      {/* The logo is scaled with a transform, which doesn't take layout
+          space — reserve room for the 2x overflow so it can't collide
+          with the divider and CTA below. */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          height: 640,
+        }}
+      >
+        {audioTrack ? (
+          <BeatLogo
+            audioSrc={resolveAudioSrc(audioTrack)}
+            audioOffsetFrames={audioOffsetFrames}
+            scale={logoScale}
+            opacity={logoSpring}
+          />
+        ) : (
+          <WaterhouseLogo scale={logoScale} opacity={logoSpring} />
+        )}
+      </div>
 
       <div
         style={{
@@ -563,14 +657,41 @@ const OutroCard: React.FC = () => {
   );
 };
 
+// Resolve an audioTrack prop to a playable src: full URLs pass through,
+// anything else is treated as a path under public/.
+function resolveAudioSrc(track: string): string {
+  return /^(https?:|data:)/.test(track) ? track : staticFile(track);
+}
+
 // --- Main Composition ---
 export const WeeklyLineup: React.FC<WeeklyLineupProps> = ({
   weekLabel,
   dateRange,
   artists,
+  audioTrack,
+  audioStartFrom,
 }) => {
+  const { fps } = useVideoConfig();
+  const totalDuration = getCompositionDuration(artists.length);
+  const outroStart = totalDuration - OUTRO_DURATION;
+  const trimFrames = Math.round((audioStartFrom ?? 0) * fps);
+
   return (
     <AbsoluteFill style={{ backgroundColor: "#000000" }}>
+      {audioTrack ? (
+        <Audio
+          src={resolveAudioSrc(audioTrack)}
+          trimBefore={trimFrames}
+          volume={(f) =>
+            interpolate(
+              f,
+              [0, 15, totalDuration - 45, totalDuration - 5],
+              [0, 1, 1, 0],
+              { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
+            )
+          }
+        />
+      ) : null}
       <TransitionSeries>
         <TransitionSeries.Sequence durationInFrames={INTRO_DURATION}>
           <IntroCard weekLabel={weekLabel} dateRange={dateRange} />
@@ -586,6 +707,7 @@ export const WeeklyLineup: React.FC<WeeklyLineupProps> = ({
               <ArtistCard
                 artistName={artist.artistName}
                 artistImage={artist.artistImage}
+                imageFit={artist.imageFit}
                 genre={artist.genre}
                 instagram={artist.instagram}
                 website={artist.website}
@@ -603,7 +725,10 @@ export const WeeklyLineup: React.FC<WeeklyLineupProps> = ({
           timing={linearTiming({ durationInFrames: TRANSITION_DURATION })}
         />
         <TransitionSeries.Sequence durationInFrames={OUTRO_DURATION}>
-          <OutroCard />
+          <OutroCard
+            audioTrack={audioTrack}
+            audioOffsetFrames={outroStart + trimFrames}
+          />
         </TransitionSeries.Sequence>
       </TransitionSeries>
     </AbsoluteFill>

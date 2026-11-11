@@ -1,0 +1,116 @@
+{
+  "slug": "boogie-exit",
+  "title": "Boogie — Exit Festival",
+  "source": "work/boogie/master.mp4",
+  "captions": "work/boogie/captions.json",
+  "artist": "BOOGIE",
+  "episodeLabel": "WATERHOUSE SESSIONS",
+  "cta": "CATCH HIM LIVE · FORT RIDDIM · 10.10",
+  "segments": [
+    {
+      "start": 930.04,
+      "end": 932.62,
+      "shot": "leftHostA",
+      "note": "hook: do you have a favorite set? ('Like,' ends 930.0, 'do' at 930.06 by DTW)"
+    },
+    {
+      "start": 932.62,
+      "end": 937.66,
+      "shot": "boogieA",
+      "note": "maybe... that could be Exit Festival"
+    },
+    {
+      "start": 937.66,
+      "end": 942.66,
+      "shot": "leftHostB",
+      "note": "you played Exit? when was that? that's huge"
+    },
+    {
+      "start": 942.66,
+      "end": 953.24,
+      "shot": "boogieB",
+      "note": "two weeks before Outlook, that summer was crazy"
+    },
+    {
+      "start": 953.24,
+      "end": 955.62,
+      "shot": "leftHostA",
+      "note": "how many people did you have?"
+    },
+    {
+      "start": 955.62,
+      "end": 965.66,
+      "shot": "boogieA",
+      "note": "15-20 people, then 50, then 100"
+    },
+    {
+      "start": 965.66,
+      "end": 977.4,
+      "shot": "boogieB",
+      "note": "they just keep arriving -> look at all of these people ('people.' ends ~977.2, host's 'How' at 977.66)"
+    }
+  ],
+  "wordFixes": [
+    {
+      "t": 955.66,
+      "match": "When",
+      "at": 956.06,
+      "d": 0.12
+    },
+    {
+      "t": 955.66,
+      "match": "I",
+      "at": 956.18,
+      "d": 0.14
+    },
+    {
+      "t": 955.66,
+      "match": "started",
+      "at": 956.32,
+      "d": 0.3
+    },
+    {
+      "t": 955.66,
+      "match": "the",
+      "at": 956.62,
+      "d": 0.1
+    },
+    {
+      "t": 955.66,
+      "match": "set,",
+      "at": 956.72,
+      "d": 0.26
+    },
+    {
+      "t": 929.88,
+      "at": 930.06,
+      "d": 0.11,
+      "w": "Do"
+    },
+    {
+      "t": 930.02,
+      "at": 930.17,
+      "d": 0.12
+    },
+    {
+      "t": 930.13,
+      "at": 930.3,
+      "d": 0.16
+    },
+    {
+      "t": 955.82,
+      "at": 956.98,
+      "d": 0.2
+    },
+    {
+      "t": 956.02,
+      "at": 957.18,
+      "d": 0.26
+    },
+    {
+      "t": 956.86,
+      "at": 957.44,
+      "d": 0.5
+    }
+  ]
+}
