@@ -56,7 +56,8 @@ tokens or `.env` for the recap videos: every API they read is public.
 | **SessionBumper** | A library of ready-made 3–4 s stingers that open onto a live scene. Landscape, webm with alpha, eight ideas: "door", "corner", "lamp", "paper", "neon", "vhs", "fader" and "flap". (The Sessions intro itself is Fuse, see #28.) | OBS, as a Stinger transition into any scene | `bun run render:bumper --idea door` |
 
 Output lands in `out/` (gitignored). A clip takes 1–2 minutes to render.
-`docs/` holds the latest rendered examples and frame strips.
+Renders are never committed: to see what a composition looks like, render it
+(`bun run render:recap --fixture` needs no network) or open `bun run dev`.
 
 ### ArtistRecap
 
@@ -190,7 +191,7 @@ bun run render:bumper --idea fader                  # out/Bumper-fader.webm
 bun run render:bumper --idea flap                   # out/Bumper-flap.webm
 bun run render:bumper --idea door --guest "Duncen"  # card reads "with Denzo and Duncen"
 bun run render:bumper --idea door --idle            # out/Bumper-door-idle.webm, loopable
-bun run render:bumper --idea corner --strip         # also docs/bumper-corner-frames.png
+bun run render:bumper --idea corner --strip         # also out/Bumper-corner-frames.png
 bun run render:bumper --idea door --matte           # out/Bumper-door-matte.mp4, Track Matte fallback
 bun run render:bumper --idea door --format prores   # out/Bumper-door.mov, ProRes 4444 with alpha, for editing
 ```
@@ -440,7 +441,6 @@ scripts/fetch-audience.ts   live data -> props JSON
 scripts/render-*.ts         one per video
 public/audio/recap/         shared sound kit for the recap videos (README inside)
 public/audio/pullup/        PullUp soundtrack (WaterhouseSession uses it too)
-docs/                       latest rendered examples and frame strips
 ```
 
 Preview any composition in the Remotion studio with `bun run dev`.

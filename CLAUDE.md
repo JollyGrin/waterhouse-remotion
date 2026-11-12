@@ -21,7 +21,7 @@ graphics in sesh-edit.
 | Artist recap ("who showed up") | Remotion `ArtistRecap` | `bun run render:recap "Stage Name" [--n 6]`; `--fixture` for no network | `out/Recap-<artist>-<date>.mp4` |
 | Session poster / cover | Remotion `SessionPoster` / `SessionPosterType` | `bun run poster --name "Name" --date D.M.YYYY [--photo path-or-url] [--session N]`. No photo = type-only cover. A poster with a photo needs macOS 14+ (cut-out and face detection via Vision, README "macOS-only steps"); the type-only cover renders anywhere. All covers: `bun run covers`. On a fresh clone run `mkdir -p posters` first, or it renders the PNG and then fails saving `posters/state.json` | `out/posters/session-<nr>-<slug>.png` |
 | Idents / Sessions intro (Fuse, the chosen Sessions intro, and the other idents) | Remotion idents in `src/ident/` | **Arriving with #28** (not on `main` yet): #28 adds the render command and fills in this row. Until then, the Fuse intro already used on edits is bundled in sesh-edit (`longform/src/sesh_edit/assets/intro/`) | webm with alpha for OBS, ProRes for editing (per #28) |
-| Stinger for OBS (transition into a scene) | Remotion `SessionBumper` | List the 8 ideas (door, corner, lamp, paper, neon, vhs, fader, flap) and point at `docs/bumper-<idea>-frames.png`; then `bun run render:bumper --idea <idea>`. OBS settings and transition points: README "SessionBumper" | `out/Bumper-<idea>.webm` (alpha) |
+| Stinger for OBS (transition into a scene) | Remotion `SessionBumper` | List the 8 ideas (door, corner, lamp, paper, neon, vhs, fader, flap) and offer contact sheets: `bun run render:bumper --idea <idea> --strip` also writes `out/Bumper-<idea>-frames.png` (every 10th frame). Then `bun run render:bumper --idea <idea>`. OBS settings and transition points: README "SessionBumper" | `out/Bumper-<idea>.webm` (alpha) |
 | Instagram reel (9:16) from an interview | Remotion `SessionReel` | `bun run reel src/reel/data/<slug>.reel.json`. Needs a cut episode and word captions; see [Reels](#reels-from-an-edited-interview) | `out/reels/` |
 | Edit a recorded Sessions interview (cut fillers, silences, pre-take chatter, A/V sync, mic mix, captions, intro) | sesh-edit | `cd longform && uv run sesh-edit <in> -o <out>.edited.mp4 --review` first, show the plan, then the same without `--review` | `<out>.edited.mp4`, `.srt`, `.decisions.json`, `.clean.mp4` |
 | Fix captions or a misheard word | sesh-edit | `cd longform && uv run sesh-edit <in> -o <out>.edited.mp4 --replace Waterhose=Waterhouse` (cached, ~40 s). Or edit the decisions file and use `--from-decisions` | overwrites the edit |
@@ -45,7 +45,10 @@ retired in #31 for sesh-edit.
   renders. Check `git status` before every commit and leave out any
   `.mp4/.mov/.webm/.wav/.mp3/.flac/.aiff/.jpg/.png` that isn't already
   tracked. The tracked exceptions are the sound kits in
-  `public/audio/{bumper,pullup,recap}/` and the example renders in `docs/`.
+  `public/audio/{bumper,pullup,recap}/`. Renders, frame strips and stills
+  never go in git (not even in `docs/`): they can be rebuilt, so give the
+  command instead. `bun run test` fails if one is tracked under `docs/`,
+  `out/` or `longform/docs/`.
 - **Never push to `main`.** Work on a branch and open a PR with `gh pr create`.
   When a user says "save my changes", that's what they mean.
 - Before a PR: `bun run lint` (eslint + tsc) and `bun run test` (it lists the root test files so `longform/` is never picked up); `bunx remotion
@@ -104,7 +107,6 @@ scripts/render-*.ts      one render script per video
 scripts/make-poster.ts, sync-covers.ts, cutout.swift   posters
 scripts/reel/make-reel.ts                              reel cut + render
 longform/                sesh-edit (Python, uv): the long-form editor; its README is the reference
-docs/                    example renders and frame strips (tracked)
 out/, work/              renders and intermediates (gitignored)
 ```
 

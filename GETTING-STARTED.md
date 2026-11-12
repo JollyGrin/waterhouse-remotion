@@ -110,8 +110,8 @@ On the GPU box the folders are `C:\Users\masle\Videos\sesh-in\` (in) and
 **Never commit media.** Git ignores `out/`, `work/`, `public/session/`,
 `public/reel/`, `public/artists/`, `public/fort-riddim/` and most of
 `public/audio/`. The only media in the repo is the sound kits in
-`public/audio/{bumper,pullup,recap}/` (made by us or free-licensed) and the
-example renders in `docs/`. If `git status` ever shows a `.mp4`, `.mov`,
+`public/audio/{bumper,pullup,recap}/` (made by us or free-licensed). Renders
+never go in git, not even as examples: they can always be made again. If `git status` ever shows a `.mp4`, `.mov`,
 `.wav`, `.jpg` or `.png` you didn't expect, ask Claude to remove it from the
 commit.
 
@@ -131,7 +131,7 @@ Claude asks if something is missing (which artist, which date, which file).
 | **"Make a recap for Tj Gee"** | "Who showed up": the artist's last shows, who came, who stayed, who was new. | `out/Recap-<artist>-<date>.mp4` |
 | **"Make a poster for Timo Feyman's session on 30.7.2026, photo is ~/Downloads/timo.jpg"** | A square session cover. With a photo, the background is cut out (needs a Mac on macOS 14 or newer). Without one you get the type-only cover. The session number counts up by itself. | `out/posters/session-<nr>-<artist>.png` |
 | **"Render the Fuse intro as a webm for OBS"** | Renders Fuse, the Waterhouse Sessions intro, with a see-through background so it plays over the live scene in OBS. Other idents work the same way. *Arriving with #28: the idents aren't in the repo yet.* | `out/` (exact name comes with #28) |
-| **"Show me the stingers I can use in OBS"** | Lists the eight stingers (door, corner, lamp, paper, neon, vhs, fader, flap) with their contact sheets in `docs/`, and renders the one you pick with the OBS settings to use. | `out/Bumper-<idea>.webm` |
+| **"Show me the stingers I can use in OBS"** | Lists the eight stingers (door, corner, lamp, paper, neon, vhs, fader, flap), renders a contact sheet of any of them into `out/` if you want to compare, and renders the one you pick with the OBS settings to use. | `out/Bumper-<idea>.webm` |
 | **"Edit this interview: cut silences and ums, add captions. The file is ~/Movies/waterhouse/in/poya.mov"** | sesh-edit transcribes it, shows you the plan (what it will cut, anything it is unsure about), then renders after you say go. | `~/Movies/waterhouse/out/poya.edited.mp4` (+ `.srt`, `.decisions.json`, `.clean.mp4`) |
 | **"The caption says 'Waterhose', fix it"** | Re-renders with that word replaced everywhere. Uses the cached transcript, so it's fast. | same file, overwritten (or a `v2` if you ask) |
 | **"Cut 20:03 to 20:29 out, that's us talking to the camera guy"** | Adds a manual cut (times from the original file) and re-renders. | same as above |

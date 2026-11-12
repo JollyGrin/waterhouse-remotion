@@ -25,6 +25,7 @@ weekly/state.json
 longform/.venv/
 longform/dist/
 longform/work/
+longform/out/
 longform/models/
 longform/bin/
 __pycache__/
