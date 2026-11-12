@@ -1,9 +1,22 @@
 # Getting started
 
 This repo makes all of Waterhouse's video. You don't need to read or write
-any code. You open a terminal in this folder, start **Claude Code**, and say
-what you want. Claude picks the right tool, runs it, and tells you where the
-file landed.
+any code. You open a terminal in this folder, start an AI coding agent, and
+say what you want. The agent picks the right tool, runs it, and tells you
+where the file landed.
+
+This guide uses **Claude Code**, which is what the repo was built with. Codex,
+Cursor, Gemini CLI and the others work too: they all read
+[AGENTS.md](AGENTS.md) on their own, so the same requests work. Where this
+guide says "Claude", read "your agent".
+
+> **The four rules** (details and commands in
+> [Sharing your work](#6-sharing-your-work)):
+>
+> 1. Always work on a **branch**, never on `main`.
+> 2. **Push** your branch early and often, so your work is on GitHub.
+> 3. Want it in `main`? Open a **pull request**. Only Dean (JollyGrin) merges.
+> 4. Then **WhatsApp Dean** the link. Otherwise keep working on your branch.
 
 There are two tools in here, and Claude chooses between them for you:
 
@@ -15,7 +28,7 @@ There are two tools in here, and Claude chooses between them for you:
 > **This repo is public.** Anyone on the internet can read it. Footage,
 > photos, music and finished videos are **never** committed. The folders they
 > go in are already set up so git ignores them (see
-> [Where your files go](#where-your-files-go)). If Claude ever asks to commit
+> [Where your files go](#2-where-your-files-go)). If Claude ever asks to commit
 > a video, image or audio file, say no.
 
 ---
@@ -71,8 +84,8 @@ cd .. && bun run render:intro   # builds the Fuse intro sesh-edit puts on every 
   (CrisperWhisper ~3 GB, wav2vec2 ~360 MB, a 4 MB face model). Do it on good
   wifi. It only happens once.
 - Editing needs an **Apple Silicon Mac** (M1 or newer) or the **GPU box**
-  (the Windows PC in the studio, `desktop-02rit4k`). The long jobs, like the
-  proper 1080p upscale, only run well on the GPU box. Ask Dean for access.
+  (the Windows PC in the studio). The long jobs, like the proper 1080p
+  upscale, only run well on the GPU box. Ask Dean for access.
 - Before your first edit, run `bun run render:intro` from the repo root (the
   last line above). Without it sesh-edit stops and tells you to run it.
 - Animation-only teammates can skip this block.
@@ -88,11 +101,14 @@ mkdir -p ~/Movies/waterhouse/in ~/Movies/waterhouse/out
 
 ```sh
 cd ~/git/waterhouse-video
-git pull
+git switch main && git pull             # get everyone's latest work
+git switch -c yourname/what-you-are-doing   # your own branch, e.g. sam/neon-stinger-shorter
 claude
 ```
 
-Now type what you want.
+Now type what you want. If you're continuing on a branch from last time,
+`git switch yourname/what-you-are-doing` instead of making a new one. Not
+sure which branch you're on? `git branch --show-current` (or ask Claude).
 
 ---
 
@@ -107,8 +123,8 @@ Now type what you want.
 | **Artist photos** for posters | anywhere, e.g. `~/Downloads/` | Give Claude the path (you can drag the file into the Terminal window). It copies the photo into `public/artists/`, which git ignores. |
 | **Music** | ask Dean for the music library folder | The weekly music beds are copyrighted. They live in `public/audio/` locally and are never committed. |
 
-On the GPU box the folders are `C:\Users\masle\Videos\sesh-in\` (in) and
-`C:\Users\masle\Videos\sesh-out\` (out).
+On the GPU box the folders are `C:\Users\<you>\Videos\sesh-in\` (in) and
+`C:\Users\<you>\Videos\sesh-out\` (out).
 
 **Never commit media.** Git ignores `out/`, `work/`, `public/session/`,
 `public/reel/`, `public/artists/`, `public/fort-riddim/` and most of
@@ -207,7 +223,8 @@ Then *"render it"*.
 | The first edit sits on **"downloading"** for a long time | The one-time 3.5 GB model download. | Leave it running on good wifi. If it fails: *"The model download failed, try again"*. |
 | **`ffmpeg: command not found`** | ffmpeg isn't installed. | `brew install ffmpeg`, or *"install ffmpeg for me"*. |
 | A render or upscale is **very slow**, the laptop is hot | Long encodes and the AI upscale are GPU work. | *"Run this on the GPU box instead"*. For a quick look on the laptop: *"use the lanczos upscale"*. |
-| **Claude picked the wrong tool** (e.g. tries to edit an interview with Remotion, or uses npm) | It didn't read the routing table. | *"Read CLAUDE.md and use the right tool"*. Editing recordings is always sesh-edit in `longform/`. Animations are always Remotion with `bun`. |
+| **Claude picked the wrong tool** (e.g. tries to edit an interview with Remotion, or uses npm) | It didn't read the routing table. | *"Read AGENTS.md and use the right tool"*. Editing recordings is always sesh-edit in `longform/`. Animations are always Remotion with `bun`. |
+| Claude wants to **commit to `main`**, or `git push` says **rejected** / **permission denied** | You're on the wrong branch, or you don't have write access to the repo yet. | *"Make a branch for this first"*. If pushing your own branch is refused, ask Dean to add you as a collaborator on GitHub. |
 
 Anything else: paste the error to Claude and ask *"what went wrong?"*. It's
 fine to say *"start over"*.
@@ -216,20 +233,64 @@ fine to say *"start over"*.
 
 ## 6. Sharing your work
 
-Rendered videos are not shared through git. Upload them to Dropbox, Drive or
-straight to Instagram.
+**Rendered videos** are not shared through git. Upload them to Dropbox, Drive
+or straight to Instagram.
 
-When you've changed an **animation** (new text, new timing, a new poster
-style) and want it kept for everyone, type:
+**Changes to the repo** (an animation's text or timing, a new poster style,
+a new stinger, a doc) are shared through GitHub. The idea, in plain words:
+`main` is the version everyone starts from, and only Dean changes it. You
+work on your own copy, called a *branch*, push it to GitHub as you go, and
+when you want your changes in `main` you ask for a *pull request* (PR) to be
+merged. Nobody can break anyone else's work this way.
 
-> *"Save my changes on a new branch and open a pull request"*
+### The four rules
 
-Claude makes a branch, commits only the code changes (never media), pushes
-it, and opens a pull request on GitHub for Dean to review. It prints the
-link. **Never push to `main`.** If Claude offers to, say no.
+1. **Always work on a branch. Never commit or push to `main`.**
+2. **Push your branch early and often.** A branch that only exists on your
+   laptop helps nobody; one on GitHub can be picked up by anyone, and
+   survives your laptop.
+3. **Want it in `main`? Open a pull request into `main`.** Only Dean
+   (JollyGrin on GitHub) merges.
+4. **Then message Dean on WhatsApp** with the PR link, so he knows it's
+   waiting. If you don't need it in `main` yet, just keep working on your
+   branch.
 
-To pick up everyone else's changes: `git pull` (or *"get the latest
-version"*).
+### The easy way: ask Claude
+
+> *"Save my changes and open a pull request"*
+
+Claude makes a branch if you're not on one, commits only the code changes
+(never media), pushes it, opens the PR on GitHub and prints the link. Then
+WhatsApp Dean the link. While you keep working, *"push my changes"* now and
+then keeps GitHub up to date.
+
+If Claude ever offers to commit, push or merge to `main`: say no.
+
+### The same thing by hand
+
+Paste one line at a time, in the repo folder.
+
+```sh
+# 1. Start a branch (once per piece of work). Name it yourname/what-it-is.
+git switch main && git pull
+git switch -c sam/neon-stinger-shorter
+
+# 2. Save and push, as often as you like
+git status                              # look: nothing ending in .mp4 .mov .wav .jpg .png you didn't expect
+git add -A
+git commit -m "neon stinger: shorter hold"
+git push -u origin HEAD                 # the first time; after that just: git push
+
+# 3. When you want it in main: open the pull request
+gh pr create --base main --web          # opens GitHub in your browser with the PR form filled in; press "Create pull request"
+```
+
+Then send Dean the link on WhatsApp. Dean may ask for changes: make them on
+the same branch, `git commit` and `git push`, and the PR updates by itself.
+
+**Picking up everyone else's changes:** `git switch main && git pull`, then
+start a new branch from there. On an existing branch, `git merge main` (or
+ask Claude to *"bring my branch up to date with main"*).
 
 ---
 
@@ -255,4 +316,6 @@ Claude Code already installed:
   - a reel from a sesh-edit interview (the missing step above);
   - a full Fuse or ident render (`bun run render:ident`: GPU box);
   - installing Homebrew, Claude Code and Bun from scratch (they were already
-    installed).
+    installed);
+  - the branch → push → pull request commands in section 6 (standard git
+    and `gh`; not re-run for this guide).

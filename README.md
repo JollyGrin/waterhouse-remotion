@@ -1,48 +1,84 @@
 # Waterhouse video
 
-> **New here? Start with [GETTING-STARTED.md](GETTING-STARTED.md).** You type
-> what you want to Claude Code in this folder and it picks the tool. Agents:
-> read [CLAUDE.md](CLAUDE.md) first.
+All of Waterhouse Studios' video work in one repo: the promo clips, idents and
+stingers (Remotion), and the tool that edits the Waterhouse Sessions
+interviews (`sesh-edit`). Shared by the Waterhouse team; most people drive it
+through an AI coding agent (Claude Code, Codex, Cursor, Gemini, ...) rather
+than by editing code.
+
+**New here? Read [GETTING-STARTED.md](GETTING-STARTED.md).** It has the setup,
+what to ask your agent, and how to share your work.
+
+## The rules
+
+This repo is **public** and `main` is what everyone else builds on, so:
+
+1. **Always work on a branch.** Never commit or push to `main`.
+2. **Push your branch early and often**, so your work is always on GitHub
+   and anyone can pick it up.
+3. **Want it in `main`? Open a pull request** into `main`. Only
+   **JollyGrin** (Dean) merges.
+4. **Then message Dean on WhatsApp** with the PR link. Otherwise just keep
+   working on your branch.
+5. **Never commit media**: footage, photos, music, renders. Git ignores the
+   folders they live in; keep it that way.
+
+The commands for 1–4 are in
+[GETTING-STARTED.md, "Sharing your work"](GETTING-STARTED.md#6-sharing-your-work).
+Agents get the same rules from [AGENTS.md](AGENTS.md) (`CLAUDE.md` imports it).
 
 ## Two tools in this repo
 
-- **Promo clips (Remotion), at the repo root.** Short vertical clips, stingers and posters rendered from live data. Bun only. Everything below this section is about this tool.
-- **Long-form interview editor (`sesh-edit`), in [`longform/`](longform/).** Python + uv. It auto-edits the Waterhouse Sessions interviews: cuts, captions, upscaling. Heavy runs happen on the GPU box. See [`longform/README.md`](longform/README.md).
+| | Tool | Where | Runs with |
+|---|---|---|---|
+| **Animations**: promo clips, the weekly lineup and board, artist recaps, posters, the Sessions intro (Fuse) and other idents, OBS stingers, reels | **Remotion** | the repo root | Bun |
+| **Editing recorded interviews**: cut fillers and silences, fix A/V sync and the mic mix, captions, the intro, 1080p upscaling | **sesh-edit** | [`longform/`](longform/) ([its README](longform/README.md)) | uv (Python) |
 
-# Waterhouse promo videos
+Idents are **made** in Remotion and **composited** by sesh-edit: Fuse
+(`src/ident/Fuse.tsx`) is the Sessions intro, and `bun run render:intro`
+builds it into sesh-edit. Details: AGENTS.md, "Hand-off".
 
-Remotion project that renders the vertical (1080×1920, 30 fps) clips Waterhouse
-sends to artists and posts to stories. Everything renders from live data; no
-design tool needed.
+## Quick commands (developers)
 
-## Quickstart (new teammate)
+The full setup, per tool, is in GETTING-STARTED.md. If you already have
+ffmpeg, Bun and uv:
 
 ```sh
-# both toolchains (macOS): ffmpeg, Bun for animations, uv for video editing
-brew install ffmpeg
-curl -fsSL https://bun.sh/install | bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
 git clone https://github.com/JollyGrin/waterhouse-video.git && cd waterhouse-video
 bun install                                  # animations (Remotion)
 (cd longform && uv sync)                     # video editing (sesh-edit)
+bun run render:intro                         # the Fuse intro sesh-edit needs (not in git)
 
 bunx remotion studio                         # preview every animation in the browser
 bun run render:recap --fixture               # render one: out/Recap-tj-gee-2026-09-03.mp4
 cd longform && uv run sesh-edit ~/Movies/waterhouse/in/interview.mov --review   # edit plan, no render
 ```
 
-The first `sesh-edit` run downloads ~3.5 GB of models. Never commit media:
-the repo is public.
+Before a PR: `bun run lint` and `bun run test`. The first `sesh-edit` run
+downloads ~3.5 GB of models. Renders land in `out/` (gitignored). No tokens or
+`.env` for the clips: every API they read is public.
 
-## Setup (once)
+## Where the docs are
 
-```
-bun install
-```
+| File | What it is for |
+|---|---|
+| [GETTING-STARTED.md](GETTING-STARTED.md) | first-time guide: install, where files go, what to ask, branch → PR → WhatsApp |
+| [AGENTS.md](AGENTS.md) | instructions for coding agents: the rules, which tool for which task, conventions |
+| this README, below | the Remotion reference: every composition, its flags, OBS setup, what the numbers mean |
+| [longform/README.md](longform/README.md) | the sesh-edit reference: flags, pipeline, the GPU box, upscaling |
+| [longform/docs/quality-and-upscaling.md](longform/docs/quality-and-upscaling.md) | why the upscaler is what it is |
+| `public/audio/*/CREDITS.md` | where every tracked sound comes from and its licence |
+| [docs/CONTENT_PLAN.md](docs/CONTENT_PLAN.md) | early planning notes, history only |
 
-Needs Bun and ffmpeg on the PATH (Remotion bundles its own Chromium). No
-tokens or `.env` for the recap videos: every API they read is public.
+---
+
+# Remotion reference
+
+Remotion project that renders the vertical (1080×1920, 30 fps) clips Waterhouse
+sends to artists and posts to stories, plus the landscape stingers and idents
+for OBS and the edited Sessions videos. Everything renders from live data; no
+design tool needed. Needs Bun and ffmpeg on the PATH (Remotion bundles its own
+Chromium).
 
 ## The videos
 
@@ -472,7 +508,7 @@ Viewers appear as initials only, never Twitch handles.
 Chat activity ("spoke") is designed but switched off until the event logger
 stores chat events. See
 [waterhouse-twitch-overlay #17](https://github.com/JollyGrin/waterhouse-twitch-overlay/issues/17)
-and [#11 here](https://github.com/JollyGrin/waterhouse-remotion/issues/11).
+and [#11 here](https://github.com/JollyGrin/waterhouse-video/issues/11).
 
 ## Media for local compositions
 
@@ -484,9 +520,9 @@ normally.
 
 | Composition | Needs (under `public/`) | Where it comes from |
 |---|---|---|
-| SessionOpen | `session/head.mp4` | the first 5 s of a finished episode, cut with ffmpeg (CLAUDE.md, "Session logo reveal") |
+| SessionOpen | `session/head.mp4` | the first 5 s of a finished episode, cut with ffmpeg (AGENTS.md, "Session logo reveal") |
 | SessionClose | `session/tail.mp4` | the last 5 s, same way |
-| SessionReel | `reel/<slug>-cut.mp4` (the `cutFile` in `src/reel/data/current.json`) | `bun run reel src/reel/data/<slug>.reel.json`, lifted out of a cut episode (from sesh-edit: `<name>.clean.mp4`; see CLAUDE.md, "Reels") |
+| SessionReel | `reel/<slug>-cut.mp4` (the `cutFile` in `src/reel/data/current.json`) | `bun run reel src/reel/data/<slug>.reel.json`, lifted out of a cut episode (from sesh-edit: `<name>.clean.mp4`; see AGENTS.md, "Reels") |
 | FortRiddim | `fort-riddim/c1m.mp4`, `c1fx.mp4`, `c2fx.mp4`, `c3m.mp4`, `c3fx.mp4`, `soundtrack.wav`, `logo-white.png`, `poster/{boogie,disc,top,lineup,info}.png` | clips and soundtrack: `bun scripts/fort-riddim/make.ts --c1 IMG_2250.MOV --c2 IMG_2253.MOV --c3 IMG_2246.MOV` (or `FORT_RIDDIM_C1/_C2/_C3`) from Manuel's phone footage; logo and poster cut-outs: copied in by hand from the FORT RIDDIM poster artwork |
 | FortRiddimPromo | `fort-riddim/promo.mp4` | `bun run promo --source FORTRIDDIMPROMO.MP4` (or `FORT_RIDDIM_PROMO_SRC`), Manuel's disc animation |
 | FortRiddimShowcase | `fort-riddim/promo.mp4` | as FortRiddimPromo; `bun run showcase --source FORTRIDDIMPROMO.MP4` |
@@ -549,7 +585,8 @@ Preview any composition in the Remotion studio with `bun run dev`.
   plan. Rebuild the kit with `bun run gen:audio:recap`.
 - **Refresh the example fixtures from live data.**
   `bun run fetch:audience --fixtures`.
-- **Before a PR.** `bun run lint` and `bun test`.
+- **Before a PR.** `bun run lint` and `bun run test`. Then push the branch,
+  open the PR into `main`, and WhatsApp Dean (see [The rules](#the-rules)).
 
-Design spec with storyboards:
+Design spec with storyboards (Dean's Claude artifact, not public):
 https://claude.ai/code/artifact/e0a9d74d-6af7-41cd-8baf-5b5b88ef78c6

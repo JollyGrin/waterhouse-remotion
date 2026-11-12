@@ -167,14 +167,10 @@ the gain sesh-edit used; with no intro the audio is copied), and writes a matchi
 
 ## Machines & getting videos in (Dropbox → GPU box)
 
-Three machines can drive this tool. Heavy work (transcription, x4plus upscaling) runs on the
-**GPU box**.
-
-| machine | role | how to reach it |
-|---|---|---|
-| **GPU box** `<gpu-host>` (Windows 10, RTX 3070) | runs the pipeline | Mac: `ssh gpu` (PowerShell: chain with `;`, never `&`). Any machine: T3 linked environment **<gpu-host>**, project `waterhouse-video` |
-| Dean's MacBook (M3 Max) | runs it too (MPS); orchestration | local |
-| <vps> (VPS) | orchestration only, no GPU | steers the GPU box through T3 only (SSH from the VPS to the GPU box is blocked by design) |
+Heavy work (transcription, the x4plus upscale) runs on the **GPU box**, the Windows 10 PC
+in the studio (RTX 3070). An Apple Silicon Mac runs everything too (MPS), just slower for
+the upscale. Access to the GPU box is arranged by Dean; on it, PowerShell chains commands
+with `;`, never `&`.
 
 GPU box layout:
 
@@ -220,8 +216,8 @@ uv run sesh-overlay "$out.decisions.json" "$out.clean.1080p.mp4" -o "$out.edited
 ```
 
 x4plus takes hours. Re-run the same `sesh-upscale` command to resume, and check progress
-with `uv run sesh-upscale --status "$out.clean.1080p.mp4.upscale-work"`. Run long jobs from
-a T3 thread on the GPU box (it needs a logged-in Windows session; the T3 app starts at login).
+with `uv run sesh-upscale --status "$out.clean.1080p.mp4.upscale-work"`. Long jobs need a
+Windows session that stays logged in; don't start one from a laptop that will sleep.
 
 ## Pipeline
 
@@ -271,8 +267,8 @@ a T3 thread on the GPU box (it needs a logged-in Windows session; the T3 app sta
    decisions are made in video time.
 6. **Captions**: Inter Bold (OFL, bundled), single line of ≤7 words (breaks at sentence
    ends, long pauses, or 88% width), centred 84.5% down, 68px at 1080p (calibrated
-   against the text width of reference frames; example frames kept in the private
-   waterhouse-video-editing repo), scaled by frame height, soft drop shadow, no
+   against the text width of reference frames, which are not in git: the repo is
+   public), scaled by frame height, soft drop shadow, no
    outline. Spoken words are white; the current word is white on a rounded `#00AEFF` box;
    upcoming words are 50% white. Rendered with Pillow; each (line, word) state is cached.
 7. **Audio finishing** (default; `--keep-stereo` turns it off). Each RODE mic is recorded
@@ -313,4 +309,5 @@ They are echoed into every `decisions.json`:
   deliberately left in, and one was swallowed into a neighbouring word's span.
 - ASR sometimes skips quiet or overlapping speech. Those words are missing from the
   captions, but the audio is never cut (see `skipped_gaps` in decisions.json).
-- The LLM steps are not deterministic. Their replies are cached in the work dir, so
+- The LLM steps are not deterministic. Their replies are cached in the work dir, so a
+  re-run gives the same plan. Delete `<name>.work/llm_*.json` to ask again.

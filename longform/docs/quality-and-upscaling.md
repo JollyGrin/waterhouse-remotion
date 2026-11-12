@@ -7,8 +7,8 @@ Experiment run 2026-11-03 on the <guest> interview (2026-10-06).
 `4xNomos8kSC`, `4xLSDIRplusC`, `4x_NMKD-Siax_200k`, a deblock pre-pass, and a
 Lanczos-blend + grain post-pass. Not yet wired into `sesh-edit`; see "Next" at the bottom.
 
-**Evidence:** example frames kept in the private waterhouse-video-editing repo.
-The comparison videos are too big for git and live on Dean's MacBook in
+**Evidence:** the example frames and comparison videos are not in git (the repo is
+public). They live on Dean's MacBook in
 `~/Movies/sesh-edit-out/esrgan-test/` (`1-…` to `5-…mp4`), along with the throwaway test
 scripts in `scripts/` (x4v3 PyTorch runner, labelled grid builder).
 
