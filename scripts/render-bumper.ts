@@ -14,7 +14,7 @@
  *   bun run render:bumper --idea flap
  *   bun run render:bumper --idea door --guest "Duncen"   # "with Denzo and Duncen"
  *   bun run render:bumper --idea door --idle             # just the idle state, loopable
- *   bun run render:bumper --idea corner --strip          # also the frame strip into docs/
+ *   bun run render:bumper --idea corner --strip          # also the frame strip into out/
  *   bun run render:bumper --idea door --matte            # Track Matte fallback (opaque mp4)
  *   bun run render:bumper --idea door --format prores    # out/Bumper-door.mov for editing
  *
@@ -27,8 +27,8 @@
  *           intro wobbling; fader: the strip with the fader up, needle on
  *           the music; flap: the finished board, one tile rattling.
  *           Written as out/Bumper-{idea}-idle.webm.
- * --strip   additionally render docs/bumper-{idea}-frames.png: every 10th
- *           frame over a checkerboard, for the PR and the README.
+ * --strip   additionally render out/Bumper-{idea}-frames.png: every 10th
+ *           frame over a checkerboard, to pick an idea or attach to a PR.
  * --format  webm (default): VP9 with alpha, for OBS. prores: ProRes 4444
  *           with alpha (yuva444p10le) as out/Bumper-{idea}.mov, for cutting
  *           the bumper into edited session videos - NLEs rarely take VP9
@@ -275,7 +275,7 @@ async function main() {
     };
     const stripPropsPath = join(tmpdir(), `waterhouse-bumper-strip-${args.idea}.json`);
     writeFileSync(stripPropsPath, JSON.stringify(stripProps, null, 2));
-    const stripPath = `docs/bumper-${args.idea}-frames.png`;
+    const stripPath = `out/Bumper-${args.idea}-frames.png`;
     await run([
       ...REMOTION,
       "still",

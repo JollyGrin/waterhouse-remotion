@@ -5,7 +5,7 @@ import { HEIGHT, WIDTH, bodyFont } from "./shared";
 import { SessionBumper, bumperDuration } from "./SessionBumper";
 
 // A contact sheet of the bumper over a checkerboard: every `step` frames,
-// in a grid, rendered as one still for docs/ and the PR. Each cell is the
+// in a grid, rendered as one still (out/Bumper-<idea>-frames.png). Each cell is the
 // composition itself, offset with a negative Sequence so it shows frame k.
 
 export const BumperStripSchema = z.object({
