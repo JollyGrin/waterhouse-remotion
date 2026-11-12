@@ -43,7 +43,7 @@
     "gen:audio:recap": "bun scripts/gen-audio-recap.ts",
     "gen:audio:bumper": "bun scripts/gen-audio-bumper.ts",
     "fetch:audience": "bun scripts/fetch-audience.ts",
-    "test": "bun test src/ scripts/",
+    "test": "bun test $(find ./src ./scripts -name '*.test.ts' -o -name '*.test.tsx')",
     "fetch:kenney": "bun scripts/fetch-kenney.ts",
     "poster": "bun scripts/make-poster.ts",
     "covers": "bun scripts/sync-covers.ts",
