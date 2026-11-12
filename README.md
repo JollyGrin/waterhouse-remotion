@@ -1,5 +1,9 @@
 # Waterhouse video
 
+> **New here? Start with [GETTING-STARTED.md](GETTING-STARTED.md).** You type
+> what you want to Claude Code in this folder and it picks the tool. Agents:
+> read [CLAUDE.md](CLAUDE.md) first.
+
 ## Two tools in this repo
 
 - **Promo clips (Remotion), at the repo root.** Short vertical clips, stingers and posters rendered from live data. Bun only. Everything below this section is about this tool.
@@ -10,6 +14,26 @@
 Remotion project that renders the vertical (1080×1920, 30 fps) clips Waterhouse
 sends to artists and posts to stories. Everything renders from live data; no
 design tool needed.
+
+## Quickstart (new teammate)
+
+```sh
+# both toolchains (macOS): ffmpeg, Bun for animations, uv for video editing
+brew install ffmpeg
+curl -fsSL https://bun.sh/install | bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+git clone https://github.com/JollyGrin/waterhouse-video.git && cd waterhouse-video
+bun install                                  # animations (Remotion)
+(cd longform && uv sync)                     # video editing (sesh-edit)
+
+bunx remotion studio                         # preview every animation in the browser
+bun run render:recap --fixture               # render one: out/Recap-tj-gee-2026-09-03.mp4
+cd longform && uv run sesh-edit ~/Movies/waterhouse/in/interview.mov --review   # edit plan, no render
+```
+
+The first `sesh-edit` run downloads ~3.5 GB of models. Never commit media:
+the repo is public.
 
 ## Setup (once)
 
@@ -367,10 +391,9 @@ normally.
 
 | Composition | Needs (under `public/`) | Where it comes from |
 |---|---|---|
-| SessionOpen | `session/head.mp4` | `bun scripts/session/make-bookends.ts <episode.mp4> <out.mp4>` cuts the first 5 s of a finished episode |
-| SessionClose | `session/tail.mp4` | same script, the last 5 s |
-| SessionEpisode | `session/master.mp4` | `bun scripts/session/make-master.ts <work-dir> <capture> <window-start> public/session/master.mp4`, the raw capture cut to `src/session/data/edl.json` |
-| SessionReel | `reel/<slug>-cut.mp4` (the `cutFile` in `src/reel/data/current.json`) | `bun run reel src/reel/data/<slug>.reel.json`, lifted out of the episode master |
+| SessionOpen | `session/head.mp4` | the first 5 s of a finished episode, cut with ffmpeg (CLAUDE.md, "Session logo reveal") |
+| SessionClose | `session/tail.mp4` | the last 5 s, same way |
+| SessionReel | `reel/<slug>-cut.mp4` (the `cutFile` in `src/reel/data/current.json`) | `bun run reel src/reel/data/<slug>.reel.json`, lifted out of a cut episode (from sesh-edit: `<name>.clean.mp4`; see CLAUDE.md, "Reels") |
 | FortRiddim | `fort-riddim/c1m.mp4`, `c1fx.mp4`, `c2fx.mp4`, `c3m.mp4`, `c3fx.mp4`, `soundtrack.wav`, `logo-white.png`, `poster/{boogie,disc,top,lineup,info}.png` | clips and soundtrack: `bun scripts/fort-riddim/make.ts --c1 IMG_2250.MOV --c2 IMG_2253.MOV --c3 IMG_2246.MOV` (or `FORT_RIDDIM_C1/_C2/_C3`) from Manuel's phone footage; logo and poster cut-outs: copied in by hand from the FORT RIDDIM poster artwork |
 | FortRiddimPromo | `fort-riddim/promo.mp4` | `bun run promo --source FORTRIDDIMPROMO.MP4` (or `FORT_RIDDIM_PROMO_SRC`), Manuel's disc animation |
 | FortRiddimShowcase | `fort-riddim/promo.mp4` | as FortRiddimPromo; `bun run showcase --source FORTRIDDIMPROMO.MP4` |

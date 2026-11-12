@@ -11,6 +11,13 @@
  * The word timings come straight from the episode's own captions.json, rebased onto
  * the reel's timeline, so nothing is re-transcribed and nothing can drift.
  *
+ * Inputs: `source` is a cut episode with no captions burned in, and `captions` is a
+ * JSON array of {t, d, w, br} words timed to that file. The two checked-in reels were
+ * made from the TypeScript episode cut that was retired in #31 (its master.mp4 and
+ * captions.json are in work/ on the machine that cut them). Long-form editing is now
+ * sesh-edit's job (longform/): its <name>.clean.mp4 is the right `source`, and its
+ * word timings would need converting to this shape first. See CLAUDE.md.
+ *
  *   bun scripts/reel/make-reel.ts src/reel/data/fro-ministry.reel.json [--cut-only]
  */
 
@@ -46,7 +53,7 @@ type ReelDef = {
    * This episode's master was built by the old chunked audio path: its sound runs
    * ~75ms early and steps 130ms at the 312s chunk join, which lands inside the last
    * span this reel uses. The delivered episode was repaired afterwards by
-   * scripts/session/rebuild-audio.ts and sits on the same clock as the master's
+   * scripts/session/rebuild-audio.ts (retired in #31) and sits on the same clock as the master's
    * picture, so picture comes from the master (no burned-in captions) and sound from
    * the delivery (correct sync). Verified by correlation, not assumed.
    */
