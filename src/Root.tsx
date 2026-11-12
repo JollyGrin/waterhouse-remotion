@@ -54,10 +54,8 @@ import weeklyFallbackFixture from "./audience/fixtures/weekly-fallback.json";
 import type { ArtistRecapProps } from "./audience/schema";
 import { staticFile } from "remotion";
 import { LogoReveal } from "./session/LogoReveal";
-import { SessionEpisode, getEpisodeDuration } from "./session/SessionEpisode";
 import type { CaptionWord } from "./session/Captions";
 import { FPS, WIDTH, HEIGHT, OPEN, CLOSE } from "./session/theme";
-import episodeEdl from "./session/data/edl.json";
 import {
   SessionReel,
   getReelDuration,
@@ -71,14 +69,14 @@ import * as PROMO from "./fort-riddim/promo";
 import { FortRiddimShowcase } from "./fort-riddim/FortRiddimShowcase";
 import * as SHOWCASE from "./fort-riddim/showcase";
 import * as FR from "./fort-riddim/edit";
-import episodeCaptions from "./session/data/captions.json";
 import { checkMedia, withMediaCheck } from "./MissingMedia";
 
 /**
- * Only the five seconds at each end are cut out of the finished episode and placed
- * in public/ — Remotion copies the whole public dir into its bundle on every render,
- * so handing it the 4 GB master would copy 4 GB twice to use ten seconds of it.
- * scripts/session/make-bookends.ts writes these.
+ * SessionOpen / SessionClose mask a clip inside the Waterhouse mark. They read the
+ * first and last five seconds of a finished episode from public/session/ (gitignored)
+ * rather than the whole episode: Remotion copies all of public/ into its bundle on
+ * every render. Cut them with ffmpeg (see CLAUDE.md, "Session logo reveal").
+ * Editing the episode itself is sesh-edit's job (longform/).
  */
 const HEAD_SRC = staticFile("session/head.mp4");
 const TAIL_SRC = staticFile("session/tail.mp4");
@@ -86,18 +84,12 @@ const TAIL_SRC = staticFile("session/tail.mp4");
 // Compositions whose media is gitignored: a card naming the missing files on a
 // fresh clone instead of a 404 (see MissingMedia.tsx and the README).
 const LogoRevealChecked = withMediaCheck(LogoReveal);
-const SessionEpisodeChecked = withMediaCheck(SessionEpisode);
 const SessionReelChecked = withMediaCheck(SessionReel);
 const FortRiddimChecked = withMediaCheck(FortRiddim);
 const FortRiddimPromoChecked = withMediaCheck(FortRiddimPromo);
 const FortRiddimShowcaseChecked = withMediaCheck(FortRiddimShowcase);
 const checkSrc = checkMedia<React.ComponentProps<typeof LogoReveal>>((p) => [p.src]);
 const checkPromo = checkMedia(() => [staticFile("fort-riddim/promo.mp4")]);
-
-/** The master's rate, recorded by build-edl. Older EDLs predate the field and are 60. */
-const EPISODE_FPS = (episodeEdl as { fps?: number }).fps ?? FPS;
-/** Picture frames in the cut master, before the black tail. */
-const EPISODE_FRAMES = Math.round(episodeEdl.outputDuration * EPISODE_FPS);
 
 const calculateWeeklyMetadata: CalculateMetadataFunction<WeeklyLineupProps> = ({
   props,
@@ -268,20 +260,6 @@ export const RemotionRoot: React.FC = () => {
         width={2000}
         height={2000}
         defaultProps={defaultTypePoster}
-      />
-      <Composition
-        id="SessionEpisode"
-        component={SessionEpisodeChecked}
-        calculateMetadata={checkMedia<React.ComponentProps<typeof SessionEpisode>>((p) => [p.masterSrc])}
-        durationInFrames={getEpisodeDuration(EPISODE_FRAMES, EPISODE_FPS)}
-        fps={EPISODE_FPS}
-        width={WIDTH}
-        height={HEIGHT}
-        defaultProps={{
-          masterSrc: staticFile("session/master.mp4"),
-          captions: episodeCaptions as CaptionWord[],
-          videoDurationInFrames: EPISODE_FRAMES,
-        }}
       />
       <Composition
         id="FortRiddim"

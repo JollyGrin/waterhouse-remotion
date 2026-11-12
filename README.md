@@ -7,9 +7,35 @@
 
 # Waterhouse promo videos
 
+> **New here? Start with [GETTING-STARTED.md](GETTING-STARTED.md).** You type
+> what you want to Claude Code in this folder and it picks the tool. Agents:
+> read [CLAUDE.md](CLAUDE.md) first.
+
 Remotion project that renders the vertical (1080×1920, 30 fps) clips Waterhouse
 sends to artists and posts to stories. Everything renders from live data; no
-design tool needed.
+design tool needed. Editing recorded long-form video (silences, fillers,
+captions, upscaling, the intro) is the other tool, sesh-edit, in
+[`longform/`](longform/).
+
+## Quickstart (new teammate)
+
+```sh
+# both toolchains (macOS): ffmpeg, Bun for animations, uv for video editing
+brew install ffmpeg
+curl -fsSL https://bun.sh/install | bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+git clone https://github.com/JollyGrin/waterhouse-video.git && cd waterhouse-video
+bun install                                  # animations (Remotion)
+(cd longform && uv sync)                     # video editing (sesh-edit)
+
+bunx remotion studio                         # preview every animation in the browser
+bun run render:recap --fixture               # render one: out/Recap-tj-gee-2026-09-03.mp4
+cd longform && uv run sesh-edit ~/Movies/waterhouse/in/interview.mov --review   # edit plan, no render
+```
+
+The first `sesh-edit` run downloads ~3.5 GB of models. Never commit media:
+the repo is public.
 
 ## Setup (once)
 
