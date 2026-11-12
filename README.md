@@ -407,13 +407,12 @@ checked with ffprobe. Full renders are heavy, so run them on the GPU box.
 Rendered files never go in git.
 
 **sesh-edit's intro.** The intro that sesh-edit prepends,
-`longform/src/sesh_edit/assets/intro/fuse-16x9.{webm,flac,json}`, was rendered
-from Fuse 16:9 (`IdentFuse-16x9`; it was `Fuse-16x9` in the prototype). To
-replace it after changing Fuse: `bun run render:ident Fuse-16x9 --only prores`,
-then make the webm and flac from `out/ident/IdentFuse-16x9.mov` with the two
-ffmpeg commands in [longform/README.md › Intro](longform/README.md#intro).
-Update `open_s` in `fuse-16x9.json` if the frame where the rings open (118)
-moves.
+`longform/src/sesh_edit/assets/intro/fuse-16x9.{webm,flac,json}`, is built from
+Fuse 16:9 (`IdentFuse-16x9`) by `bun run render:intro` (gitignored; run it once
+on a fresh clone, and after changing Fuse). It renders the ProRes master with
+`render:ident`, encodes the webm and flac, and writes `open_s` (frame 118 / 30).
+If the frame where the rings open moves, update `OPEN_FRAME` in
+`scripts/render-intro.ts`. `--reuse` skips the render if the `.mov` exists.
 
 **Sound and timing.** Each soundtrack is synthesised by a Python generator
 next to the code. The generator also writes the motion data the picture

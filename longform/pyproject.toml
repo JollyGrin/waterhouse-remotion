@@ -26,3 +26,6 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sesh_edit"]
+# The intro is gitignored (built by `bun run render:intro` from the repo root), and hatch
+# leaves gitignored files out unless they are listed here.
+artifacts = ["src/sesh_edit/assets/intro/fuse-16x9.*"]

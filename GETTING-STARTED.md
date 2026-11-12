@@ -64,6 +64,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # close and reopen Terminal so `uv` is found, then:
 cd ~/git/waterhouse-video/longform
 uv sync
+cd .. && bun run render:intro   # builds the Fuse intro sesh-edit puts on every edit (~30 s)
 ```
 
 - The first real edit downloads about **3.5 GB** of speech models
@@ -72,6 +73,8 @@ uv sync
 - Editing needs an **Apple Silicon Mac** (M1 or newer) or the **GPU box**
   (the Windows PC in the studio, `desktop-02rit4k`). The long jobs, like the
   proper 1080p upscale, only run well on the GPU box. Ask Dean for access.
+- Before your first edit, run `bun run render:intro` from the repo root (the
+  last line above). Without it sesh-edit stops and tells you to run it.
 - Animation-only teammates can skip this block.
 
 **Make your video folders** (outside the repo, so nothing in them can ever be
@@ -235,7 +238,7 @@ version"*).
 Done on a MacBook (Apple Silicon) on 2026-11-12, with Bun, uv, ffmpeg and
 Claude Code already installed:
 
-- **Setup:** `bun install`; `cd longform && uv sync`; `sesh-edit --help`,
+- **Setup:** `bun install`; `cd longform && uv sync`; `bun run render:intro`; `sesh-edit --help`,
   `sesh-upscale --help` and `sesh-overlay --help`; the lanczos upscale on a
   test clip.
 - **Animations:** Remotion Studio opens. These all rendered: the PullUp clips

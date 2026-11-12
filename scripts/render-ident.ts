@@ -88,7 +88,7 @@ export function renderCommand(id: string, out: Output): { cmd: string[]; file: s
   return { file, cmd: [...base, id, file, "--codec=vp9", "--pixel-format=yuva420p", "--image-format=png"] };
 }
 
-async function run(cmd: string[]): Promise<void> {
+export async function run(cmd: string[]): Promise<void> {
   console.log(`\n$ ${cmd.join(" ")}`);
   const child = Bun.spawn(cmd, { stdin: "ignore", stdout: "inherit", stderr: "inherit" });
   const code = await child.exited;

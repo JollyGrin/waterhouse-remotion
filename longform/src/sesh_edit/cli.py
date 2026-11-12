@@ -299,9 +299,10 @@ def main(argv=None) -> int:
     from . import intro as intro_mod
 
     def intro_spec(default):
+        """`default` is a callable so --no-intro never touches the (possibly unbuilt) bundled intro."""
         if args.no_intro:
             return None
-        return intro_mod.make_spec(args.intro) if args.intro else default
+        return intro_mod.make_spec(args.intro) if args.intro else default()
 
     if decisions_in is None:
         wav16 = work / "audio16k.wav"
@@ -414,7 +415,7 @@ def main(argv=None) -> int:
             "skipped_gaps": plan["skipped_gaps"],
             "keep_segments": plan["keep_segments"],
             "inserts": inserts,
-            "intro": intro_spec(intro_mod.make_spec()),
+            "intro": intro_spec(intro_mod.make_spec),
             "audio": {"mix": "original" if args.keep_stereo else "centred",
                       "loudnorm": None if args.no_loudnorm else {"i": args.lufs, "tp": -1.0}},
             "caption_words": plan["caption_words"],
@@ -425,7 +426,7 @@ def main(argv=None) -> int:
         decisions = decisions_in
         log(f"loaded decisions from {args.from_decisions}")
         # recorded intro wins unless overridden; decisions from before the intro existed get the default
-        decisions["intro"] = intro_spec(decisions["intro"] if "intro" in decisions else intro_mod.make_spec())
+        decisions["intro"] = intro_spec(lambda: decisions["intro"] if "intro" in decisions else intro_mod.make_spec())
 
     s = decisions["stats"]
     print("\n=== PLAN ===")

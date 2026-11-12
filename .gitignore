@@ -26,6 +26,8 @@ longform/.venv/
 longform/dist/
 longform/work/
 longform/out/
+# the sesh-edit intro, built from src/ident/Fuse by `bun run render:intro` (#38)
+longform/src/sesh_edit/assets/intro/fuse-16x9.*
 longform/models/
 longform/bin/
 __pycache__/
