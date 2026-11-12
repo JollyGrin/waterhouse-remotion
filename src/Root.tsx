@@ -70,6 +70,7 @@ import { FortRiddimShowcase } from "./fort-riddim/FortRiddimShowcase";
 import * as SHOWCASE from "./fort-riddim/showcase";
 import * as FR from "./fort-riddim/edit";
 import { checkMedia, withMediaCheck } from "./MissingMedia";
+import { IdentCompositions } from "./ident/Idents";
 
 /**
  * SessionOpen / SessionClose mask a clip inside the Waterhouse mark. They read the
@@ -251,6 +252,8 @@ const defaultTypePoster: SessionPosterTypeProps = {
 export const RemotionRoot: React.FC = () => {
   return (
     <>
+      {/* Idents ported from nb-bumpers (#28); Idents > Sessions-intro > Fuse is the Sessions intro. */}
+      <IdentCompositions />
       <Composition
         id="SessionPosterType"
         component={SessionPosterType}

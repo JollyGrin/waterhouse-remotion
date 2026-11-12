@@ -53,7 +53,8 @@ tokens or `.env` for the recap videos: every API they read is public.
 | **PullUp** | 10 s looping "I'm on tonight, pull up" clip per event. A shared booking - two or more artists on one reservation - gets a single clip led by the event title, with everyone on the bill in the stream window | Artists forward it to friends before a show | `bun run render:pullup` |
 | **WaterhouseSession** | 10 s looping clip for the Tuesday "Waterhouse Sessions" night: the guest and Denzo side by side in the stream window, with the running order ("interview with Denzo, then live set") under it | The guest forwards it to friends before the session | `bun run render:session` (guests from the booking) or `--guest "Duncen"` |
 | **WeeklyLineup** | This week's lineup as a story | Instagram story | `bun run render:weekly` |
-| **SessionBumper** | A library of ready-made 3–4 s stingers that open onto a live scene. Landscape, webm with alpha, eight ideas: "door", "corner", "lamp", "paper", "neon", "vhs", "fader" and "flap". (The Sessions intro itself is Fuse, see #28.) | OBS, as a Stinger transition into any scene | `bun run render:bumper --idea door` |
+| **SessionBumper** | A library of ready-made 3–4 s stingers that open onto a live scene. Landscape, webm with alpha, eight ideas: "door", "corner", "lamp", "paper", "neon", "vhs", "fader" and "flap". (The Sessions intro itself is Fuse, see [Idents](#idents-fuse--the-sessions-intro).) | OBS, as a Stinger transition into any scene | `bun run render:bumper --idea door` |
+| **Idents** (`src/ident/`) | Channel idents with alpha, portrait and 16:9. **Fuse is the Waterhouse Sessions intro**; FuseLines are three alternatives. See [Idents](#idents-fuse--the-sessions-intro) | Opening edited Sessions videos (sesh-edit bundles Fuse), OBS | `bun run render:ident Fuse-16x9` |
 
 Output lands in `out/` (gitignored). A clip takes 1–2 minutes to render.
 Renders are never committed: to see what a composition looks like, render it
@@ -343,6 +344,62 @@ over black on the left and its alpha as a luma matte on the right. The
 sound comes from the left half only (the matte copy is muted). In the
 Stinger settings tick *Use a Track Matte*, Matte Layout *Same file, side by
 side*, left fill / right matte, same transition point.
+
+### Idents (Fuse = the Sessions intro)
+
+Channel idents ported from the nb-bumpers prototype into `src/ident/` (#28).
+In Studio they sit under **Idents › Sessions-intro**. **Fuse is the Waterhouse
+Sessions intro:** the scope beam draws the mark, then it is scratched on a
+record. FuseLines are three alternatives with a redrawn beam.
+
+| Idea | Comp ids | What it is |
+| --- | --- | --- |
+| Fuse | `IdentFuse`, `IdentFuse-16x9` | **the Sessions intro** (5 s) |
+| FuseLines-Ink | `IdentFuseLines-Ink`, `IdentFuseLines-Ink-16x9` | Fuse with the beam as an ink line after the Waterhouse Radio poster, Denzo 4 semitones lower |
+| FuseLines-Wave | `IdentFuseLines-Wave`, `IdentFuseLines-Wave-16x9` | the ink line with wave echoes, Denzo 7 semitones lower |
+| FuseLines-Draft | `IdentFuseLines-Draft`, `IdentFuseLines-Draft-16x9` | the ink line as a draughtsman's drawing, Denzo 12 semitones lower |
+
+Every comp also has a `-preview` twin over stand-in footage (a Sessions
+thumbnail). The others are alpha: transparent wherever the content shows through.
+The rest of the prototype's ideas follow in a second PR.
+
+```
+bun run render:ident Fuse-16x9          # the intro, 16:9
+bun run render:ident --intro            # Fuse + FuseLines, both cuts
+bun run render:ident Fuse --only prores # just the editing master
+```
+
+Each comp writes three files to `out/ident/`: `Ident<Id>-preview.mp4` (H.264,
+to watch), `Ident<Id>.mov` (ProRes 4444 with alpha, for editing) and
+`Ident<Id>.webm` (VP9 with alpha, for an OBS stinger). The alpha files are
+checked with ffprobe. Full renders are heavy, so run them on the GPU box.
+Rendered files never go in git.
+
+**sesh-edit's intro.** The intro that sesh-edit prepends,
+`longform/src/sesh_edit/assets/intro/fuse-16x9.{webm,flac,json}`, was rendered
+from Fuse 16:9 (`IdentFuse-16x9`; it was `Fuse-16x9` in the prototype). To
+replace it after changing Fuse: `bun run render:ident Fuse-16x9 --only prores`,
+then make the webm and flac from `out/ident/IdentFuse-16x9.mov` with the two
+ffmpeg commands in [longform/README.md › Intro](longform/README.md#intro).
+Update `open_s` in `fuse-16x9.json` if the frame where the rings open (118)
+moves.
+
+**Sound and timing.** Each soundtrack is synthesised by a Python generator
+next to the code. The generator also writes the motion data the picture
+reads. Both outputs are committed. After any timing change, re-run the
+generator so picture and sound stay locked:
+
+```
+uv run src/ident/splice/gen-audio.py        # public/ident/audio/splice/mix.wav (Fuse's soundtrack) + src/ident/splice/motion.ts
+uv run src/ident/fuselines/gen-audio.py 4   # public/ident/audio/fuselines/mix-4.wav (also 7, 12)
+```
+
+The generators carry uv inline-script headers (numpy, plus Pillow where an
+image is written), so `uv run` fetches what they need. Never pip-install into
+the system Python. The scratch voice is `src/ident/scratchkit/denzo-waterhouse.wav`:
+Denzo saying "Waterhouse", cut from the published Sessions video (YouTube
+mWNWTIGghjc). Ident-owned media lives in `public/ident/`. `public/audio/` stays
+for the other videos' sounds.
 
 ### Just the numbers
 
