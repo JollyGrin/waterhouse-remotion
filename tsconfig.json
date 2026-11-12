@@ -13,5 +13,5 @@
     "noUnusedLocals": true,
     "resolveJsonModule": true
   },
-  "exclude": ["remotion.config.ts", "work", "out", "node_modules"]
+  "exclude": ["remotion.config.ts", "work", "out", "node_modules", "longform"]
 }

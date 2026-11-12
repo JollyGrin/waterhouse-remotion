@@ -20,3 +20,15 @@ public/reel/
 public/artists/
 posters/state.json
 weekly/state.json
+
+# longform/ (sesh-edit, Python + uv): venv, caches, build output, work dirs
+longform/.venv/
+longform/dist/
+longform/work/
+longform/models/
+longform/bin/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
