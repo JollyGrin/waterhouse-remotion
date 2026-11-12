@@ -31,7 +31,12 @@ rendering and prints the plan.
 brew install ffmpeg          # any build works: captions are drawn with Pillow, no libass/drawtext needed
 curl -LsSf https://astral.sh/uv/install.sh | sh
 uv sync                      # pins Python 3.12 (see .python-version)
+(cd .. && bun run render:intro)   # before your first edit: builds the Fuse intro from the Remotion source
 ```
+
+The intro files (`src/sesh_edit/assets/intro/fuse-16x9.{webm,flac,json}`) are not in git:
+`bun run render:intro` at the repo root renders them. Without them sesh-edit stops and says
+so; `--no-intro` works without them.
 
 The `claude` CLI must be installed and logged in. The LLM steps call `claude -p` headless,
 so no API key is needed. Model weights are downloaded on first run: CrisperWhisper (~3 GB),
@@ -107,11 +112,15 @@ never gets the intro: it stays the upscale input, and `sesh-overlay` adds the in
   `sesh-overlay` reuses. `--from-decisions` renders the recorded intro unless `--no-intro`
   or `--intro` is given. Decisions from before the intro existed get the default Fuse.
 
-Asset: `src/sesh_edit/assets/intro/fuse-16x9.{webm,flac,json}` was made from the ProRes 4444
-master rendered by the Remotion project at the root of this repo (JollyGrin/waterhouse-video#28, `Fuse-16x9.mov`):
-`ffmpeg -i Fuse-16x9.mov -an -c:v libvpx-vp9 -pix_fmt yuva420p -crf 30 -b:v 0 -auto-alt-ref 0 fuse-16x9.webm`,
-`ffmpeg -i Fuse-16x9.mov -vn -c:a flac fuse-16x9.flac`. ffmpeg only decodes VP9 alpha with
-`-c:v libvpx-vp9` before `-i` (the code does this).
+Asset: `src/sesh_edit/assets/intro/fuse-16x9.{webm,flac,json}` is built, not committed:
+`bun run render:intro` at the repo root renders the Remotion comp `IdentFuse-16x9`
+(`src/ident/Fuse.tsx`) to ProRes 4444, then
+`ffmpeg -i IdentFuse-16x9.mov -an -c:v libvpx-vp9 -pix_fmt yuva420p -crf 30 -b:v 0 -auto-alt-ref 0 fuse-16x9.webm`
+(no colour flags: the master's tags pass through untouched),
+`ffmpeg -i IdentFuse-16x9.mov -vn -c:a flac fuse-16x9.flac`, and writes `fuse-16x9.json` with
+`open_s` = frame 118 / 30. To change the intro, edit the Fuse comp and re-run `render:intro`.
+The wheel bundles the files through hatch `artifacts` (pyproject.toml). ffmpeg only decodes
+VP9 alpha with `-c:v libvpx-vp9` before `-i` (the code does this).
 
 `--intro FILE` takes any video with alpha (VP8/VP9 WebM, ProRes 4444, ...). Audio comes from
 a `<stem>.flac`/`<stem>.wav` next to it, else from the file. The point where the interview

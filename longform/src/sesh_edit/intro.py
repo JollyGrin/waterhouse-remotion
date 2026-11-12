@@ -29,10 +29,20 @@ DEFAULT_FILE = "fuse-16x9.webm"
 TP_CEILING = -1.0
 
 
+MISSING_HINT = ("The bundled Fuse intro isn't built yet. From the repo root run: bun run render:intro\n"
+                "(it renders Fuse in Remotion into {dir}). Or pass --no-intro to edit without it.")
+
+
 def resolve(file: str) -> Path:
-    """Bundled intros are stored by bare name (machine-independent decisions.json)."""
+    """Bundled intros are stored by bare name (machine-independent decisions.json). They are
+    built from the Remotion source by `bun run render:intro`, not committed."""
     p = Path(file).expanduser()
-    return p if p.is_absolute() else ASSET_DIR / p
+    if p.is_absolute():
+        return p
+    path = ASSET_DIR / p
+    if not path.exists():
+        raise SystemExit(f"intro not found: {path}\n" + MISSING_HINT.format(dir=ASSET_DIR))
+    return path
 
 
 def _probe(path: Path) -> dict:
