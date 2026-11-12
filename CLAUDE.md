@@ -47,7 +47,7 @@ retired in #31 for sesh-edit.
   `public/audio/{bumper,pullup,recap}/` and the example renders in `docs/`.
 - **Never push to `main`.** Work on a branch and open a PR with `gh pr create`.
   When a user says "save my changes", that's what they mean.
-- Before a PR: `bun run lint` (eslint + tsc) and `bun test`; `bunx remotion
+- Before a PR: `bun run lint` (eslint + tsc) and `bun run test` (it lists the root test files so `longform/` is never picked up); `bunx remotion
   compositions` must list everything. `longform/` has no test suite yet:
   check that `uv run sesh-edit --help` still runs.
 - Non-developer users: tell them in plain words what you ran and the full
@@ -94,7 +94,7 @@ src/bumper/              SessionBumper stingers (one file per idea; timing const
 src/session/             Tuesday session plan (plan.ts) + session graphics: LogoReveal (SessionOpen/Close), WhMark, Captions, theme
 src/reel/                SessionReel (9:16 reel), ReelCaptions, theme (crop boxes per speaker), data/*.reel.json
 src/fort-riddim/         FORT RIDDIM promo, showcase and reel (one-off, Manuel)
-src/audience/            metrics + schemas for recap and board (tests: bun test)
+src/audience/            metrics + schemas for recap and board (tests: bun run test)
 scripts/render-*.ts      one render script per video
 scripts/make-poster.ts, sync-covers.ts, cutout.swift   posters
 scripts/reel/make-reel.ts                              reel cut + render
