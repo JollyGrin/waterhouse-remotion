@@ -1,5 +1,9 @@
 # Waterhouse video
 
+> **New here? Start with [GETTING-STARTED.md](GETTING-STARTED.md).** You type
+> what you want to Claude Code in this folder and it picks the tool. Agents:
+> read [CLAUDE.md](CLAUDE.md) first.
+
 ## Two tools in this repo
 
 - **Promo clips (Remotion), at the repo root.** Short vertical clips, stingers and posters rendered from live data. Bun only. Everything below this section is about this tool.
@@ -7,15 +11,9 @@
 
 # Waterhouse promo videos
 
-> **New here? Start with [GETTING-STARTED.md](GETTING-STARTED.md).** You type
-> what you want to Claude Code in this folder and it picks the tool. Agents:
-> read [CLAUDE.md](CLAUDE.md) first.
-
 Remotion project that renders the vertical (1080×1920, 30 fps) clips Waterhouse
 sends to artists and posts to stories. Everything renders from live data; no
-design tool needed. Editing recorded long-form video (silences, fillers,
-captions, upscaling, the intro) is the other tool, sesh-edit, in
-[`longform/`](longform/).
+design tool needed.
 
 ## Quickstart (new teammate)
 
