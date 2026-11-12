@@ -14,12 +14,12 @@ graphics in sesh-edit.
 
 | If the task is... | Use | Run (from the repo root unless it says `cd longform`) | Output |
 |---|---|---|---|
-| Promo clip for an event ("pull up tonight") | Remotion `PullUp` | `bun run render:pullup --all` (every approved event in the next 7 days, no prompts). Interactive picker without `--all` | `out/PullUp-<name>-<date>.mp4` |
+| Promo clip for an event ("pull up tonight") | Remotion `PullUp` | `bun run render:pullup --all` (every approved event in the next 7 days, no prompts), then point the user at the clip they asked for. The picker without `--all` is interactive and can't be piped | `out/PullUp-<name>-<date>.mp4` |
 | Clip for a Tuesday Waterhouse Session | Remotion `WaterhouseSession` | `bun run render:session [--date YYYY-MM-DD] [--guest "Name"]`; flags in README | `out/Session-<guest>-<date>.mp4` |
-| Weekly lineup story | Remotion `WeeklyLineup` | `echo \| bun run render:weekly` (it prompts for a token; Enter = public endpoint) | `out/WeeklyLineup-<date>.mp4` |
+| Weekly lineup story | Remotion `WeeklyLineup` | `bun run render:weekly`. **Interactive** (two prompts: token, then which events) and it can't be driven from a pipe, so ask the user to run it in their own Terminal and press Enter twice (public endpoint, all events) | `out/WeeklyLineup-<date>.mp4` |
 | Weekly board (ranked by crowd, badges) | Remotion `HouseWeekly` | `bun run render:weekly-board [--end YYYY-MM-DD]` | `out/HouseWeekly-<YYYY-Www>.mp4` |
 | Artist recap ("who showed up") | Remotion `ArtistRecap` | `bun run render:recap "Stage Name" [--n 6]`; `--fixture` for no network | `out/Recap-<artist>-<date>.mp4` |
-| Session poster / cover | Remotion `SessionPoster` / `SessionPosterType` | `bun run poster --name "Name" --date D.M.YYYY [--photo path-or-url] [--session N]`. No photo = type-only cover. Photo prep is macOS 14+ only (Vision). All covers: `bun run covers` | `out/posters/session-<nr>-<slug>.png` |
+| Session poster / cover | Remotion `SessionPoster` / `SessionPosterType` | `bun run poster --name "Name" --date D.M.YYYY [--photo path-or-url] [--session N]`. No photo = type-only cover. Photo prep is macOS 14+ only (Vision). All covers: `bun run covers`. On a fresh clone run `mkdir -p posters` first, or it renders the PNG and then fails saving `posters/state.json` | `out/posters/session-<nr>-<slug>.png` |
 | Stinger or ident for OBS | Remotion `SessionBumper` | List the 8 ideas (door, corner, lamp, paper, neon, vhs, fader, flap) and point at `docs/bumper-<idea>-frames.png`; then `bun run render:bumper --idea <idea>`. OBS settings and transition points: README "SessionBumper" | `out/Bumper-<idea>.webm` (alpha) |
 | Instagram reel (9:16) from an interview | Remotion `SessionReel` | `bun run reel src/reel/data/<slug>.reel.json`. Needs a cut episode and word captions; see [Reels](#reels-from-an-edited-interview) | `out/reels/` |
 | Edit a recorded Sessions interview (cut fillers, silences, pre-take chatter, A/V sync, mic mix, captions, intro) | sesh-edit | `cd longform && uv run sesh-edit <in> -o <out>.edited.mp4 --review` first, show the plan, then the same without `--review` | `<out>.edited.mp4`, `.srt`, `.decisions.json`, `.clean.mp4` |
@@ -48,8 +48,8 @@ retired in #31 for sesh-edit.
 - **Never push to `main`.** Work on a branch and open a PR with `gh pr create`.
   When a user says "save my changes", that's what they mean.
 - Before a PR: `bun run lint` (eslint + tsc) and `bun test`; `bunx remotion
-  compositions` must list everything. For `longform/`, its own tests
-  (`cd longform && uv run pytest`, if present).
+  compositions` must list everything. `longform/` has no test suite yet:
+  check that `uv run sesh-edit --help` still runs.
 - Non-developer users: tell them in plain words what you ran and the full
   path of what it wrote. Offer to open Studio or the file.
 
@@ -106,6 +106,9 @@ out/, work/              renders and intermediates (gitignored)
 ## Hand-off: Remotion → sesh-edit
 
 Idents and intros are **made** in Remotion and **composited** by sesh-edit.
+
+(Step 1 is tested. Steps 2–3 follow `longform/README.md` but haven't been
+run end to end yet: that needs a real edit with the models downloaded.)
 
 1. Render the ident with alpha. For a 16:9 bumper:
    `bun run render:bumper --idea door --format prores` → `out/Bumper-door.mov`

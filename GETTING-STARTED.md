@@ -124,9 +124,9 @@ Claude asks if something is missing (which artist, which date, which file).
 
 | Type this | What happens | Where it lands |
 |---|---|---|
-| **"Make the PullUp promo for Friday's event"** | Reads the studio calendar, renders a 10-second "pull up" clip per event: the artist's photo, time and a fake chat. A shared night gets one clip with everyone on it. | `out/PullUp-<name>-<date>.mp4` |
+| **"Make the PullUp promo for Friday's event"** | Reads the studio calendar and renders a 10-second "pull up" clip for every event in the next 7 days (the artist's photo, the time, a fake chat), then tells you which file is Friday's. A shared night gets one clip with everyone on it. | `out/PullUp-<name>-<date>.mp4` |
 | **"Make the Waterhouse Session clip for Tuesday"** | Same idea for the Tuesday interview night: the guest and Denzo side by side, with the running order. | `out/Session-<guest>-<date>.mp4` |
-| **"Render the weekly lineup"** | This week's lineup from the calendar, as an Instagram story. | `out/WeeklyLineup-<date>.mp4` |
+| **"Render the weekly lineup"** | This week's lineup from the calendar, as an Instagram story. This one asks questions, so Claude gives you a command to run in Terminal: press Enter twice (no login, all events). | `out/WeeklyLineup-<date>.mp4` |
 | **"Make last week's board"** | The weekly board: every artist ranked by the crowd they brought, badges, and next week's lineup. | `out/HouseWeekly-<year>-W<week>.mp4` |
 | **"Make a recap for Tj Gee"** | "Who showed up": the artist's last shows, who came, who stayed, who was new. | `out/Recap-<artist>-<date>.mp4` |
 | **"Make a poster for Timo Feyman's session on 30.7.2026, photo is ~/Downloads/timo.jpg"** | A square session cover. With a photo, the background is cut out (Mac only). Without one you get the type-only cover. The session number counts up by itself. | `out/posters/session-<nr>-<artist>.png` |
@@ -231,15 +231,23 @@ version"*).
 
 ## What was tried for this guide
 
-Done on a MacBook (Apple Silicon) on 2026-11-12:
+Done on a MacBook (Apple Silicon) on 2026-11-12, with Bun, uv, ffmpeg and
+Claude Code already installed:
 
-- Setup: `bun install`, `cd longform && uv sync`, `sesh-edit --help`,
-  `sesh-upscale --help`, `sesh-overlay --help`.
-- Animations: Remotion Studio opens; renders of the recap, the door stinger
-  and the type-only poster; the composition list. The prompts above were
-  given to Claude Code in this folder to check it picks the right tool and
-  command.
-- Not run here, so untried: a real sesh-edit edit (no model download on this
-  machine), the x4plus upscale (GPU box only), the reel from an edited
-  interview (needs the missing step above), and installing Homebrew, Claude
-  Code and Bun from scratch (already installed).
+- **Setup:** `bun install`; `cd longform && uv sync`; `sesh-edit --help`,
+  `sesh-upscale --help` and `sesh-overlay --help`; the lanczos upscale on a
+  test clip.
+- **Animations:** Remotion Studio opens. These all rendered: the PullUp clips
+  (`--all`), a Waterhouse Session clip, the weekly lineup (run by hand in a
+  terminal), the recap, the door stinger, the type-only poster and the
+  SessionOpen reveal.
+- **Routing:** every prompt in the table in section 3 was given to Claude
+  Code in this folder. Each time it picked the right tool and command.
+- **Not tried here:**
+  - a real sesh-edit edit, `--review`, a caption fix, a cut or the intro
+    hand-off (all need the 3.5 GB model download, which wasn't done on this
+    machine);
+  - the x4plus upscale (GPU box only);
+  - a reel from a sesh-edit interview (the missing step above);
+  - installing Homebrew, Claude Code and Bun from scratch (they were already
+    installed).
