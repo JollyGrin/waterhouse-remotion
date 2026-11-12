@@ -132,7 +132,7 @@ Claude asks if something is missing (which artist, which date, which file).
 | **"Make a poster for Timo Feyman's session on 30.7.2026, photo is ~/Downloads/timo.jpg"** | A square session cover. With a photo, the background is cut out (needs a Mac on macOS 14 or newer). Without one you get the type-only cover. The session number counts up by itself. | `out/posters/session-<nr>-<artist>.png` |
 | **"Render the Fuse intro as a webm for OBS"** | Renders Fuse, the Waterhouse Sessions intro, with a see-through background so it plays over the live scene in OBS. The FuseLines alternatives work the same way. Heavy: best on the GPU box. | `out/ident/IdentFuse-16x9.webm` (+ `.mov` for editing, `-preview.mp4` to watch) |
 | **"Show me the stingers I can use in OBS"** | Lists the eight stingers (door, corner, lamp, paper, neon, vhs, fader, flap), renders a contact sheet of any of them into `out/` if you want to compare, and renders the one you pick with the OBS settings to use. | `out/Bumper-<idea>.webm` |
-| **"Edit this interview: cut silences and ums, add captions. The file is ~/Movies/waterhouse/in/poya.mov"** | sesh-edit transcribes it, shows you the plan (what it will cut, anything it is unsure about), then renders after you say go. | `~/Movies/waterhouse/out/poya.edited.mp4` (+ `.srt`, `.decisions.json`, `.clean.mp4`) |
+| **"Edit this interview: cut silences and ums, add captions. The file is ~/Movies/waterhouse/in/guest.mov"** | sesh-edit transcribes it, shows you the plan (what it will cut, anything it is unsure about), then renders after you say go. | `~/Movies/waterhouse/out/guest.edited.mp4` (+ `.srt`, `.decisions.json`, `.clean.mp4`) |
 | **"The caption says 'Waterhose', fix it"** | Re-renders with that word replaced everywhere. Uses the cached transcript, so it's fast. | same file, overwritten (or a `v2` if you ask) |
 | **"Cut 20:03 to 20:29 out, that's us talking to the camera guy"** | Adds a manual cut (times from the original file) and re-renders. | same as above |
 | **"Make the 1080p version"** | Quick version on a laptop (minutes, a bit soft). The proper AI upscale runs on the GPU box and takes hours. Then the captions and intro are drawn again at 1080p so the text stays sharp. | `~/Movies/waterhouse/out/<name>.edited.1080p.mp4` |
@@ -180,7 +180,7 @@ edit plan first"**, or Claude runs:
 
 ```sh
 cd longform
-uv run sesh-edit ~/Movies/waterhouse/in/poya.mov -o ~/Movies/waterhouse/out/poya.edited.mp4 --review
+uv run sesh-edit ~/Movies/waterhouse/in/guest.mov -o ~/Movies/waterhouse/out/guest.edited.mp4 --review
 ```
 
 You get the list of cuts, the audio sync it detected, and a **review list**:
