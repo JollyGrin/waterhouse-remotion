@@ -348,9 +348,10 @@ side*, left fill / right matte, same transition point.
 ### Idents (Fuse = the Sessions intro)
 
 Channel idents ported from the nb-bumpers prototype into `src/ident/` (#28).
-In Studio they sit under **Idents › Sessions-intro**. **Fuse is the Waterhouse
-Sessions intro:** the scope beam draws the mark, then it is scratched on a
-record. FuseLines are three alternatives with a redrawn beam.
+In Studio they sit under **Idents**, with **Idents › Sessions-intro** at the
+top. **Fuse is the Waterhouse Sessions intro:** the scope beam draws the mark,
+then it is scratched on a record. FuseLines are three alternatives with a
+redrawn beam. The other 24 are the prototype's other ideas, kept as stock.
 
 | Idea | Comp ids | What it is |
 | --- | --- | --- |
@@ -359,14 +360,44 @@ record. FuseLines are three alternatives with a redrawn beam.
 | FuseLines-Wave | `IdentFuseLines-Wave`, `IdentFuseLines-Wave-16x9` | the ink line with wave echoes, Denzo 7 semitones lower |
 | FuseLines-Draft | `IdentFuseLines-Draft`, `IdentFuseLines-Draft-16x9` | the ink line as a draughtsman's drawing, Denzo 12 semitones lower |
 
+The other ideas (only those with a 16:9 id have a landscape layout):
+
+| Idea | Comp ids | What it is | Sound and data from |
+| --- | --- | --- | --- |
+| Cymatics | `IdentCymatics`, `IdentCymatics-16x9` | white sand on a speaker-driven plate runs into Chladni figures, then into the mark | `cymatics/gen-audio.py (+ timeline.ts)` |
+| Deadpan | `IdentDeadpan` | typed mono lines, a browser selection, DELETE, a slammed title card | shared kits in `public/audio/` |
+| Drop | `IdentDrop` | physics comedy: the title and the mark land on a ledge as heavy blocks, then a trapdoor drops them | shared kits in `public/audio/` |
+| Extrude | `IdentExtrude` | the brutal offset shadow extrudes into a 3D block | shared kits in `public/audio/` |
+| Feedback | `IdentFeedback`, `IdentFeedback-16x9` | a camera pointed at its own monitor; kicks push the feedback into a tunnel | `feedback/gen-audio.py` |
+| Fracture | `IdentFracture` | the mark chiselled out of a board-formed concrete slab | `fracture/gen-audio.py, gen-texture.py (concrete.png)` |
+| Groove | `IdentGroove`, `IdentGroove-16x9` | Scope's Lissajous resolves into a spinning record, then Platter's second half | `groove/gen-audio.py (+ motion.ts)` |
+| Laser | `IdentLaser`, `IdentLaser-16x9` | a club laser show in haze; the projector draws the mark | `laser/gen-audio.py` |
+| Louvre | `IdentLouvre` | a wall of metal fins turns in waves to reveal the mark | `louvre/gen-audio.py` |
+| Monolith | `IdentMonolith` | Extrude remade serious: dark concrete slabs under one raking light | `monolith/gen-audio.py` |
+| Morph | `IdentMorph` | a black square bounces, splits and morphs into the logo pieces on the beat | shared kits in `public/audio/` |
+| Phosphor | `IdentPhosphor`, `IdentPhosphor-16x9` | Scope's beam becomes Platter's record without a cut | `phosphor/gen-audio.py (+ motion.ts)` |
+| Pinscreen | `IdentPinscreen` | a wall of machined pins presses the mark out in relief | `pinscreen/gen-audio.py` |
+| Platter | `IdentPlatter`, `IdentPlatter-16x9` | a record under a booth light; the DJ scratches the mark on the label | `platter/gen-audio.py (+ motion.ts)` |
+| Popup | `IdentPopup` | the mark as a paper pop-up book | shared kits in `public/audio/` |
+| Press | `IdentPress` | the site's button is the ident: a card pops, the logo pieces land on the beat | shared kits in `public/audio/` |
+| Scope | `IdentScope`, `IdentScope-16x9` | an oscilloscope beam draws the mark; the sound is the XY signal | `scope/gen-audio.py` |
+| Slice | `IdentSlice` | knife cuts split a stack of cut paper, showing its coloured layers | shared kits in `public/audio/` |
+| Spectro | `IdentSpectro`, `IdentSpectro-16x9` | the mark hidden in the spectrogram of the sound | `spectro/gen-audio.py (+ tape.png, data.ts), then gen-wide.py (wide-data.ts)` |
+| Splice | `IdentSplice`, `IdentSplice-16x9` | Scope's first half, hard-cut on the big kick into Platter's second half | `splice/gen-audio.py (+ motion.ts)` |
+| Stamp | `IdentStamp` | a riso press: misregistered ink passes snap into register | shared kits in `public/audio/` |
+| Strobe | `IdentStrobe` | the mark cut out of a black wall, a club strobe behind it | `strobe/gen-audio.py` |
+| Tile | `IdentTile` | the mark multiplies into brand wallpaper, then a dive through one door | shared kits in `public/audio/` |
+| Xerox | `IdentXerox` | an underground techno flyer coming off a photocopier | `xerox/gen-audio.py` |
+
 Every comp also has a `-preview` twin over stand-in footage (a Sessions
 thumbnail). The others are alpha: transparent wherever the content shows through.
-The rest of the prototype's ideas follow in a second PR.
 
 ```
 bun run render:ident Fuse-16x9          # the intro, 16:9
 bun run render:ident --intro            # Fuse + FuseLines, both cuts
 bun run render:ident Fuse --only prores # just the editing master
+bun run render:ident Scope Scope-16x9   # any other ident, by its id without "Ident"
+bun run render:ident --all              # every ident (long: GPU box)
 ```
 
 Each comp writes three files to `out/ident/`: `Ident<Id>-preview.mp4` (H.264,
@@ -394,8 +425,13 @@ uv run src/ident/splice/gen-audio.py        # public/ident/audio/splice/mix.wav 
 uv run src/ident/fuselines/gen-audio.py 4   # public/ident/audio/fuselines/mix-4.wav (also 7, 12)
 ```
 
-The generators carry uv inline-script headers (numpy, plus Pillow where an
-image is written), so `uv run` fetches what they need. Never pip-install into
+The other generators are in the table above, all run the same way
+(`uv run src/ident/<idea>/<script>.py`). Spectro's `gen-wide.py` reads the mix
+`gen-audio.py` writes, so run them in that order. Ideas without a generator
+use the tracked sound kits in `public/audio/{bumper,pullup,recap}/`.
+
+The generators carry uv inline-script headers (numpy, plus Pillow for Spectro
+and the Fracture texture), so `uv run` fetches what they need. Never pip-install into
 the system Python. The scratch voice is `src/ident/scratchkit/denzo-waterhouse.wav`:
 Denzo saying "Waterhouse", cut from the published Sessions video (YouTube
 mWNWTIGghjc). Ident-owned media lives in `public/ident/`. `public/audio/` stays
