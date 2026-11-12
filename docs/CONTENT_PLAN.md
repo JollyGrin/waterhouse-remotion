@@ -1,5 +1,9 @@
 # Event Promo Video Content Plan
 
+> Early planning notes from before the first clip existed (March 2026), kept for
+> history. What actually shipped is in the [README](../README.md): PullUp,
+> WeeklyLineup, HouseWeekly, ArtistRecap and the rest. Nothing here is a spec.
+
 ## Overview
 Automated Instagram Story videos promoting upcoming events. Each video should feel consistent (branded) but fresh (varied enough to not feel repetitive week-to-week).
 
