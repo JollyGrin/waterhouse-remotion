@@ -2,10 +2,12 @@ import React from "react";
 import { AbsoluteFill, Audio, Easing, interpolate, staticFile, useCurrentFrame } from "remotion";
 import { C, FONT_DISPLAY, FONT_MONO, LogoPiece, LOGO_ORDER, LOGO_PATHS, rand } from "./brand";
 import { Grain } from "./common";
-import { THETA, THETA_SUB } from "./splice/motion";
+import { THETA, THETA_SUB } from "./turn/motion";
 
 /**
- * FUSE: Phosphor's picture on Splice's soundtrack (public/ident/audio/splice/mix.wav, untouched).
+ * FUSE: Phosphor's picture on Splice's soundtrack, in its "turn" cut (public/ident/audio/turn/mix.wav,
+ * from `src/ident/splice/gen-audio.py --turn`): no scratching, the record is let go after the catch and
+ * keeps turning, uncut, into the brake.
  *
  *   f0–55   SCOPE, at Scope time s = sOf(f) (Splice's compressed power-on: f0–6 = s1–11, then s = f + 5):
  *           dot, flat line, kicks f10/25 (s15/30), the 3:2 Lissajous, the beam pulls the mark out and it
@@ -14,9 +16,9 @@ import { THETA, THETA_SUB } from "./splice/motion";
  *           silent here): on the boom the beam bursts the label edge and the grooves outward around the
  *           locked mark, the glass dissolves and the booth light comes up on real vinyl and paper. The
  *           vector outline lingers on the label as a cold burn-in and fades under the first strokes.
- *   f62–    PLATTER on Splice's rotation curve (src/ident/splice/motion.ts, Splice frames): baby scratches, the
- *           transformer drag, chirps; the title on the hold (85), release (100), brake (107), the grooves
- *           part into rings (116). Clear from 140.
+ *   f62–    PLATTER on the turn curve (src/ident/turn/motion.ts, Splice frames): let go at 62.5, up to speed by
+ *           68.5, then one long uncut turn; the title on the hold (85), brake (107), the grooves part into
+ *           rings (116). Clear from 140.
  * `Fuse` 1080×1920, `FuseWide` 1920×1080. Grid: 120 bpm, beat = 15 f.
  */
 export const FUSE_FRAMES = 150;
@@ -32,6 +34,9 @@ const MORPH: Record<LogoPiece, [number, number]> = {
   slatB: [50, 59],
   door: [52, 60],
 };
+// the scope's X–Y figure before the beam pulls the mark out: a LIS_X:LIS_Y Lissajous (was 3:2)
+const LIS_X = 5;
+const LIS_Y = 4;
 const LOCK = 60; // Scope time (s) of the lock
 const LOCK_F = 55; // = Splice CUT: the lock, in frames
 const CATCH = 62.5; // first scratch stroke (Splice p52.5)
@@ -235,7 +240,7 @@ const trace = (L: Layout, f: number): { pts: Pt[]; w: Record<LogoPiece, number> 
     }
     if (fold > 0) {
       const th = u * 2 * Math.PI;
-      const lis: Pt = [CX + L.LX * lisAmp * Math.sin(3 * th + phi), CY + L.LY * lisAmp * Math.sin(2 * th)];
+      const lis: Pt = [CX + L.LX * lisAmp * Math.sin(LIS_X * th + phi), CY + L.LY * lisAmp * Math.sin(LIS_Y * th)];
       p = fold < 1 ? lerp(p, lis, fold) : lis;
       const tw = 4 * fold * (1 - fold) * 0.7;
       if (tw > 0) {
@@ -408,7 +413,7 @@ const Glass: React.FC<{ L: Layout; f: number; o: number }> = ({ L, f, o }) => {
   const s = sOf(f);
   const glass = interpolate(s, [0, 14], [0, 1], clamp);
   const ui = (s >= 11 ? (s < 13 ? 0.45 : 1) : 0) * interpolate(f, [56, 61], [1, 0], clamp);
-  const mode = s < FOLD[0] ? "Y–T   50ms/DIV" : s < LOCK ? "X–Y   3:2" : f < CATCH ? "X–Y   LOCKED" : "X–Y   33⅓";
+  const mode = s < FOLD[0] ? "Y–T   50ms/DIV" : s < LOCK ? `X–Y   ${LIS_X}:${LIS_Y}` : f < CATCH ? "X–Y   LOCKED" : "X–Y   33⅓";
   const trig = KICKS_SCOPE.concat([LOCK]).some((k) => s - k >= 0 && s - k < 4);
   const { ro } = L;
   return (
@@ -784,7 +789,7 @@ const MaskFrame: React.FC<{ mask: string; weave: [number, number]; steady: boole
 
 const FuseView: React.FC<{ L: Layout }> = ({ L }) => {
   const f = useCurrentFrame();
-  const audio = <Audio src={staticFile("ident/audio/splice/mix.wav")} volume={0.9} />;
+  const audio = <Audio src={staticFile("ident/audio/turn/mix.wav")} volume={0.9} />;
   if (f >= T.clear) return <AbsoluteFill>{audio}</AbsoluteFill>;
 
   const cam = camera(f, L);
