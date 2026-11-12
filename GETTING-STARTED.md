@@ -129,7 +129,7 @@ Claude asks if something is missing (which artist, which date, which file).
 | **"Render the weekly lineup"** | This week's lineup from the calendar, as an Instagram story. This one asks questions, so Claude gives you a command to run in Terminal: press Enter twice (no login, all events). | `out/WeeklyLineup-<date>.mp4` |
 | **"Make last week's board"** | The weekly board: every artist ranked by the crowd they brought, badges, and next week's lineup. | `out/HouseWeekly-<year>-W<week>.mp4` |
 | **"Make a recap for Tj Gee"** | "Who showed up": the artist's last shows, who came, who stayed, who was new. | `out/Recap-<artist>-<date>.mp4` |
-| **"Make a poster for Timo Feyman's session on 30.7.2026, photo is ~/Downloads/timo.jpg"** | A square session cover. With a photo, the background is cut out (Mac only). Without one you get the type-only cover. The session number counts up by itself. | `out/posters/session-<nr>-<artist>.png` |
+| **"Make a poster for Timo Feyman's session on 30.7.2026, photo is ~/Downloads/timo.jpg"** | A square session cover. With a photo, the background is cut out (needs a Mac on macOS 14 or newer). Without one you get the type-only cover. The session number counts up by itself. | `out/posters/session-<nr>-<artist>.png` |
 | **"Render the Fuse intro as a webm for OBS"** | Renders Fuse, the Waterhouse Sessions intro, with a see-through background so it plays over the live scene in OBS. Other idents work the same way. *Arriving with #28: the idents aren't in the repo yet.* | `out/` (exact name comes with #28) |
 | **"Show me the stingers I can use in OBS"** | Lists the eight stingers (door, corner, lamp, paper, neon, vhs, fader, flap) with their contact sheets in `docs/`, and renders the one you pick with the OBS settings to use. | `out/Bumper-<idea>.webm` |
 | **"Edit this interview: cut silences and ums, add captions. The file is ~/Movies/waterhouse/in/poya.mov"** | sesh-edit transcribes it, shows you the plan (what it will cut, anything it is unsure about), then renders after you say go. | `~/Movies/waterhouse/out/poya.edited.mp4` (+ `.srt`, `.decisions.json`, `.clean.mp4`) |
@@ -200,7 +200,7 @@ Then *"render it"*.
 
 | What you see | What it means | What to type |
 |---|---|---|
-| A **"Missing media"** card (or a 404 error) in Studio or in a render | That animation plays footage that isn't in git (it's private or too big), e.g. `public/session/head.mp4` or a reel's cut. | *"What files does this need and where do I get them?"* Usually: ask the person who made it for the file, or let Claude regenerate it from the source. |
+| A **"Missing media"** card in Studio or in a render | That animation plays footage that isn't in git (it's private or too big), e.g. `public/session/head.mp4` or a reel's cut. | *"What files does this need and where do I get them?"* Usually: ask the person who made it for the file, or let Claude regenerate it from the source. |
 | The first edit sits on **"downloading"** for a long time | The one-time 3.5 GB model download. | Leave it running on good wifi. If it fails: *"The model download failed, try again"*. |
 | **`ffmpeg: command not found`** | ffmpeg isn't installed. | `brew install ffmpeg`, or *"install ffmpeg for me"*. |
 | A render or upscale is **very slow**, the laptop is hot | Long encodes and the AI upscale are GPU work. | *"Run this on the GPU box instead"*. For a quick look on the laptop: *"use the lanczos upscale"*. |

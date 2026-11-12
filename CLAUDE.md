@@ -19,7 +19,7 @@ graphics in sesh-edit.
 | Weekly lineup story | Remotion `WeeklyLineup` | `bun run render:weekly`. **Interactive** (two prompts: token, then which events) and it can't be driven from a pipe, so ask the user to run it in their own Terminal and press Enter twice (public endpoint, all events) | `out/WeeklyLineup-<date>.mp4` |
 | Weekly board (ranked by crowd, badges) | Remotion `HouseWeekly` | `bun run render:weekly-board [--end YYYY-MM-DD]` | `out/HouseWeekly-<YYYY-Www>.mp4` |
 | Artist recap ("who showed up") | Remotion `ArtistRecap` | `bun run render:recap "Stage Name" [--n 6]`; `--fixture` for no network | `out/Recap-<artist>-<date>.mp4` |
-| Session poster / cover | Remotion `SessionPoster` / `SessionPosterType` | `bun run poster --name "Name" --date D.M.YYYY [--photo path-or-url] [--session N]`. No photo = type-only cover. Photo prep is macOS 14+ only (Vision). All covers: `bun run covers`. On a fresh clone run `mkdir -p posters` first, or it renders the PNG and then fails saving `posters/state.json` | `out/posters/session-<nr>-<slug>.png` |
+| Session poster / cover | Remotion `SessionPoster` / `SessionPosterType` | `bun run poster --name "Name" --date D.M.YYYY [--photo path-or-url] [--session N]`. No photo = type-only cover. A poster with a photo needs macOS 14+ (cut-out and face detection via Vision, README "macOS-only steps"); the type-only cover renders anywhere. All covers: `bun run covers`. On a fresh clone run `mkdir -p posters` first, or it renders the PNG and then fails saving `posters/state.json` | `out/posters/session-<nr>-<slug>.png` |
 | Idents / Sessions intro (Fuse, the chosen Sessions intro, and the other idents) | Remotion idents in `src/ident/` | **Arriving with #28** (not on `main` yet): #28 adds the render command and fills in this row. Until then, the Fuse intro already used on edits is bundled in sesh-edit (`longform/src/sesh_edit/assets/intro/`) | webm with alpha for OBS, ProRes for editing (per #28) |
 | Stinger for OBS (transition into a scene) | Remotion `SessionBumper` | List the 8 ideas (door, corner, lamp, paper, neon, vhs, fader, flap) and point at `docs/bumper-<idea>-frames.png`; then `bun run render:bumper --idea <idea>`. OBS settings and transition points: README "SessionBumper" | `out/Bumper-<idea>.webm` (alpha) |
 | Instagram reel (9:16) from an interview | Remotion `SessionReel` | `bun run reel src/reel/data/<slug>.reel.json`. Needs a cut episode and word captions; see [Reels](#reels-from-an-edited-interview) | `out/reels/` |
@@ -66,13 +66,16 @@ retired in #31 for sesh-edit.
 | Renders | Remotion | `out/` |
 
 A composition whose footage is missing shows a "Missing media" card naming
-the file (or, before that card landed, fails with a 404). Tell the user which
-file is missing and where it comes from; don't commit a stand-in.
+the file (`src/MissingMedia.tsx`). README "Media for local compositions" lists
+what each one needs and where it comes from: tell the user, don't commit a
+stand-in. Scheduled cover sync is an example launchd wrapper in
+`scripts/contrib/covers-cron.sh` (macOS); elsewhere schedule
+`bun scripts/sync-covers.ts` yourself.
 
 ## Which machine renders
 
 - **Laptops** (Apple Silicon): all Remotion renders (a clip takes about 1
-  minute), Studio, posters (photo cut-out needs macOS 14+), sesh-edit
+  minute), Studio, posters (a photo needs macOS 14+), sesh-edit
   `--review` and normal edits (MPS), the lanczos upscale.
 - **GPU box** `desktop-02rit4k` (Windows 10, RTX 3070): the x4plus upscale
   (hours, Real-ESRGAN via Vulkan), and long encodes. Reach it through the T3

@@ -391,10 +391,9 @@ normally.
 
 | Composition | Needs (under `public/`) | Where it comes from |
 |---|---|---|
-| SessionOpen | `session/head.mp4` | `bun scripts/session/make-bookends.ts <episode.mp4> <out.mp4>` cuts the first 5 s of a finished episode |
-| SessionClose | `session/tail.mp4` | same script, the last 5 s |
-| SessionEpisode | `session/master.mp4` | `bun scripts/session/make-master.ts <work-dir> <capture> <window-start> public/session/master.mp4`, the raw capture cut to `src/session/data/edl.json` |
-| SessionReel | `reel/<slug>-cut.mp4` (the `cutFile` in `src/reel/data/current.json`) | `bun run reel src/reel/data/<slug>.reel.json`, lifted out of the episode master |
+| SessionOpen | `session/head.mp4` | the first 5 s of a finished episode, cut with ffmpeg (CLAUDE.md, "Session logo reveal") |
+| SessionClose | `session/tail.mp4` | the last 5 s, same way |
+| SessionReel | `reel/<slug>-cut.mp4` (the `cutFile` in `src/reel/data/current.json`) | `bun run reel src/reel/data/<slug>.reel.json`, lifted out of a cut episode (from sesh-edit: `<name>.clean.mp4`; see CLAUDE.md, "Reels") |
 | FortRiddim | `fort-riddim/c1m.mp4`, `c1fx.mp4`, `c2fx.mp4`, `c3m.mp4`, `c3fx.mp4`, `soundtrack.wav`, `logo-white.png`, `poster/{boogie,disc,top,lineup,info}.png` | clips and soundtrack: `bun scripts/fort-riddim/make.ts --c1 IMG_2250.MOV --c2 IMG_2253.MOV --c3 IMG_2246.MOV` (or `FORT_RIDDIM_C1/_C2/_C3`) from Manuel's phone footage; logo and poster cut-outs: copied in by hand from the FORT RIDDIM poster artwork |
 | FortRiddimPromo | `fort-riddim/promo.mp4` | `bun run promo --source FORTRIDDIMPROMO.MP4` (or `FORT_RIDDIM_PROMO_SRC`), Manuel's disc animation |
 | FortRiddimShowcase | `fort-riddim/promo.mp4` | as FortRiddimPromo; `bun run showcase --source FORTRIDDIMPROMO.MP4` |
