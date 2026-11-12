@@ -65,13 +65,14 @@ import {
 } from "./reel/SessionReel";
 import { FPS as REEL_FPS, WIDTH as REEL_WIDTH, HEIGHT as REEL_HEIGHT } from "./reel/theme";
 import reelData from "./reel/data/current.json";
-import { FortRiddim } from "./fort-riddim/FortRiddim";
+import { FortRiddim, FORT_RIDDIM_MEDIA } from "./fort-riddim/FortRiddim";
 import { FortRiddimPromo } from "./fort-riddim/FortRiddimPromo";
 import * as PROMO from "./fort-riddim/promo";
 import { FortRiddimShowcase } from "./fort-riddim/FortRiddimShowcase";
 import * as SHOWCASE from "./fort-riddim/showcase";
 import * as FR from "./fort-riddim/edit";
 import episodeCaptions from "./session/data/captions.json";
+import { checkMedia, withMediaCheck } from "./MissingMedia";
 
 /**
  * Only the five seconds at each end are cut out of the finished episode and placed
@@ -81,6 +82,17 @@ import episodeCaptions from "./session/data/captions.json";
  */
 const HEAD_SRC = staticFile("session/head.mp4");
 const TAIL_SRC = staticFile("session/tail.mp4");
+
+// Compositions whose media is gitignored: a card naming the missing files on a
+// fresh clone instead of a 404 (see MissingMedia.tsx and the README).
+const LogoRevealChecked = withMediaCheck(LogoReveal);
+const SessionEpisodeChecked = withMediaCheck(SessionEpisode);
+const SessionReelChecked = withMediaCheck(SessionReel);
+const FortRiddimChecked = withMediaCheck(FortRiddim);
+const FortRiddimPromoChecked = withMediaCheck(FortRiddimPromo);
+const FortRiddimShowcaseChecked = withMediaCheck(FortRiddimShowcase);
+const checkSrc = checkMedia<React.ComponentProps<typeof LogoReveal>>((p) => [p.src]);
+const checkPromo = checkMedia(() => [staticFile("fort-riddim/promo.mp4")]);
 
 /** The master's rate, recorded by build-edl. Older EDLs predate the field and are 60. */
 const EPISODE_FPS = (episodeEdl as { fps?: number }).fps ?? FPS;
@@ -259,7 +271,8 @@ export const RemotionRoot: React.FC = () => {
       />
       <Composition
         id="SessionEpisode"
-        component={SessionEpisode}
+        component={SessionEpisodeChecked}
+        calculateMetadata={checkMedia<React.ComponentProps<typeof SessionEpisode>>((p) => [p.masterSrc])}
         durationInFrames={getEpisodeDuration(EPISODE_FRAMES, EPISODE_FPS)}
         fps={EPISODE_FPS}
         width={WIDTH}
@@ -272,7 +285,8 @@ export const RemotionRoot: React.FC = () => {
       />
       <Composition
         id="FortRiddim"
-        component={FortRiddim}
+        component={FortRiddimChecked}
+        calculateMetadata={checkMedia(() => FORT_RIDDIM_MEDIA.map((f) => staticFile(f)))}
         durationInFrames={FR.TOTAL_FRAMES}
         fps={FR.FPS}
         width={FR.WIDTH}
@@ -280,7 +294,8 @@ export const RemotionRoot: React.FC = () => {
       />
       <Composition
         id="FortRiddimPromo"
-        component={FortRiddimPromo}
+        component={FortRiddimPromoChecked}
+        calculateMetadata={checkPromo}
         durationInFrames={PROMO.FRAMES}
         fps={PROMO.FPS}
         width={PROMO.WIDTH}
@@ -288,7 +303,8 @@ export const RemotionRoot: React.FC = () => {
       />
       <Composition
         id="FortRiddimShowcase"
-        component={FortRiddimShowcase}
+        component={FortRiddimShowcaseChecked}
+        calculateMetadata={checkPromo}
         durationInFrames={SHOWCASE.FRAMES}
         fps={SHOWCASE.FPS}
         width={SHOWCASE.WIDTH}
@@ -296,7 +312,8 @@ export const RemotionRoot: React.FC = () => {
       />
       <Composition
         id="SessionReel"
-        component={SessionReel}
+        component={SessionReelChecked}
+        calculateMetadata={checkMedia<React.ComponentProps<typeof SessionReel>>((p) => [p.cutSrc])}
         durationInFrames={getReelDuration(reelData.pictureFrames)}
         fps={REEL_FPS}
         width={REEL_WIDTH}
@@ -313,7 +330,8 @@ export const RemotionRoot: React.FC = () => {
       />
       <Composition
         id="SessionOpen"
-        component={LogoReveal}
+        component={LogoRevealChecked}
+        calculateMetadata={checkSrc}
         durationInFrames={OPEN.durationInFrames}
         fps={FPS}
         width={WIDTH}
@@ -322,7 +340,8 @@ export const RemotionRoot: React.FC = () => {
       />
       <Composition
         id="SessionClose"
-        component={LogoReveal}
+        component={LogoRevealChecked}
+        calculateMetadata={checkSrc}
         durationInFrames={CLOSE.durationInFrames}
         fps={FPS}
         width={WIDTH}
@@ -502,9 +521,12 @@ export const RemotionRoot: React.FC = () => {
           bedVariant: "b" as const,
         }}
       />
-      {/* The Tuesday stream stinger: landscape, VP9 webm with alpha. One
-          registration per idea (door, corner, lamp, paper, neon, vhs, fader, flap) so each is a click
-          away; `preview` shows a checkerboard where the live scene will be. */}
+      {/* SessionBumper: a library of ready-made OBS stingers (landscape, VP9
+          webm with alpha). The Sessions intro itself is Fuse (#28); these are
+          stock. One registration per idea (door, corner, lamp, paper, neon,
+          vhs, fader: the mixing-desk fader push, flap: the split-flap board)
+          so each is a click away; `preview` shows a checkerboard where the
+          live scene will be. */}
       <Composition
         id="SessionBumper"
         component={SessionBumper}

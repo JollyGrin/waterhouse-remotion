@@ -249,9 +249,11 @@ const FallingPane: React.FC<{
 interface CornerProps {
   guestName: string | null;
   idle: boolean;
+  // Skip the sound (the Track Matte's second copy).
+  muted?: boolean;
 }
 
-export const Corner: React.FC<CornerProps> = ({ guestName, idle }) => {
+export const Corner: React.FC<CornerProps> = ({ guestName, idle, muted }) => {
   const frame = useCurrentFrame();
 
   const { cracks, panes, order } = useMemo(() => {
@@ -273,7 +275,7 @@ export const Corner: React.FC<CornerProps> = ({ guestName, idle }) => {
 
   return (
     <AbsoluteFill>
-      {idle ? null : <CornerAudio crackCount={cracks.length} />}
+      {idle || muted ? null : <CornerAudio crackCount={cracks.length} />}
       {frame < FALL_START ? (
         card
       ) : (

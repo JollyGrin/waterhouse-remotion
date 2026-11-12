@@ -10,8 +10,7 @@
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "noUnusedLocals": true,
-    "resolveJsonModule": true
+    "noUnusedLocals": true
   },
   "exclude": ["remotion.config.ts", "work", "out", "node_modules", "longform"]
 }

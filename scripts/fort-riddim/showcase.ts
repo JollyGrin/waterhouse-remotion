@@ -1,6 +1,9 @@
 // FORT RIDDIM DJ showcase: slide one of the Instagram carousel.
 //
-//   bun scripts/fort-riddim/showcase.ts
+//   bun scripts/fort-riddim/showcase.ts --source FORTRIDDIMPROMO.MP4
+//
+// --source (or FORT_RIDDIM_PROMO_SRC): the same disc animation promo.ts uses; its
+// audio is copied through.
 //
 // Same disc, lettering and beat grid as the promo card, re-cut to 4:5 and five bars.
 // Carousels lock every slide to the ratio of the first, so the DJ slides behind this one
@@ -10,9 +13,9 @@
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { PROMO_SOURCE, requireSource } from "./sources";
 import { CARDS, DURATION, FPS } from "../../src/fort-riddim/showcase";
 
-const SOURCE = "/Users/manuel/Desktop/FORTRIDDIMPROMO.MP4";
 const BG = "public/fort-riddim/promo.mp4";
 const WORK = "work/fort-riddim";
 const OUT = "out/posts/FORT RIDDIM - DJ showcase.mp4";
@@ -24,6 +27,7 @@ const run = (cmd: string, argv: string[]) =>
   });
 
 async function main() {
+  const SOURCE = requireSource(PROMO_SOURCE);
   if (!existsSync(BG)) throw new Error(`missing ${BG} — run the promo script first`);
   mkdirSync(WORK, { recursive: true });
   mkdirSync("out/posts", { recursive: true });

@@ -42,7 +42,10 @@
  * missing.
  */
 
-import { existsSync, mkdirSync, writeFileSync } from "fs";
+import { mkdirSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
+import { ffEnv, findBin } from "./lib/ff";
 import {
   BUMPER_IDEAS,
   bumperOutName,
@@ -138,17 +141,7 @@ async function run(cmd: string[]): Promise<void> {
 }
 
 /** ffprobe from PATH, else the one Remotion ships. */
-function ffprobeBin(): string | null {
-  const which = Bun.spawnSync(["sh", "-c", "command -v ffprobe"]);
-  if (which.exitCode === 0) return which.stdout.toString().trim();
-  const candidates = [
-    "node_modules/@remotion/compositor-linux-x64-gnu/ffprobe",
-    "node_modules/@remotion/compositor-linux-arm64-gnu/ffprobe",
-    "node_modules/@remotion/compositor-darwin-arm64/ffprobe",
-    "node_modules/@remotion/compositor-darwin-x64/ffprobe",
-  ];
-  return candidates.find((c) => existsSync(c)) ?? null;
-}
+const ffprobeBin = () => findBin("ffprobe");
 
 export interface Probe {
   codec: string;
@@ -164,19 +157,22 @@ export function probeVideo(file: string): Probe | null {
   const bin = ffprobeBin();
   if (!bin) return null;
   const query = (extra: string[]) =>
-    Bun.spawnSync([
-      bin,
-      "-v",
-      "error",
-      ...extra,
-      "-select_streams",
-      "v:0",
-      "-show_entries",
-      "stream=codec_name,pix_fmt:stream_tags=alpha_mode",
-      "-of",
-      "default=nw=1",
-      file,
-    ]);
+    Bun.spawnSync(
+      [
+        bin,
+        "-v",
+        "error",
+        ...extra,
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=codec_name,pix_fmt:stream_tags=alpha_mode",
+        "-of",
+        "default=nw=1",
+        file,
+      ],
+      { env: ffEnv(bin) },
+    );
   // Decoding through libvpx-vp9 reports yuva420p directly; Remotion's
   // trimmed ffprobe does not know that option, so fall back to the plain
   // probe and the alpha_mode tag.
@@ -219,7 +215,7 @@ async function main() {
     vhsDate: vhsDateStamp(new Date()),
   };
   const stem = bumperOutName(props).replace(/\.webm$/, "");
-  const propsPath = `/tmp/waterhouse-bumper-${stem}.json`;
+  const propsPath = join(tmpdir(), `waterhouse-bumper-${stem}.json`);
   writeFileSync(propsPath, JSON.stringify(props, null, 2));
 
   if (args.matte) {
@@ -277,7 +273,7 @@ async function main() {
       step: 10,
       columns: 4,
     };
-    const stripPropsPath = `/tmp/waterhouse-bumper-strip-${args.idea}.json`;
+    const stripPropsPath = join(tmpdir(), `waterhouse-bumper-strip-${args.idea}.json`);
     writeFileSync(stripPropsPath, JSON.stringify(stripProps, null, 2));
     const stripPath = `docs/bumper-${args.idea}-frames.png`;
     await run([

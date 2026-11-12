@@ -80,11 +80,22 @@ const Liquid: React.FC<{ id: string; t: number; scale: number }> = ({ id, t, sca
   </svg>
 );
 
+/** The transcode a segment plays: "fx" for the rush look, "m" (mild) otherwise. */
+const segmentSrc = (s: PlacedSegment) => `fort-riddim/${s.clip}${styleOf(s) === "rush" ? "fx" : "m"}.mp4`;
+
+/** Every public/ file the reel plays, for the missing-media check in Root.tsx. */
+export const FORT_RIDDIM_MEDIA = [
+  ...new Set(PLACED.map(segmentSrc)),
+  ...["boogie", "disc", "top", "lineup", "info"].map((n) => `fort-riddim/poster/${n}.png`),
+  "fort-riddim/logo-white.png",
+  "fort-riddim/soundtrack.wav",
+];
+
 const SegmentView: React.FC<{ s: PlacedSegment; next?: PlacedSegment }> = ({ s, next }) => {
   const f = useCurrentFrame();
   const t = (s.start + f) / FPS;
   const rush = styleOf(s) === "rush";
-  const src = `fort-riddim/${s.clip}${rush ? "fx" : "m"}.mp4`;
+  const src = segmentSrc(s);
   const srcFrame = Math.round(sourceTime(s, f) * FPS);
 
   // The slow push keeps a held talking shot alive; a moving shot does not need it, and

@@ -199,9 +199,11 @@ const FlapAudio: React.FC<{ plan: Tile[] }> = ({ plan }) => {
 interface FlapProps {
   guestName: string | null;
   idle: boolean;
+  // Skip the sound (the Track Matte's second copy).
+  muted?: boolean;
 }
 
-export const Flap: React.FC<FlapProps> = ({ guestName, idle }) => {
+export const Flap: React.FC<FlapProps> = ({ guestName, idle, muted }) => {
   const realFrame = useCurrentFrame();
   const uid = useId().replace(/:/g, "");
   const frame = idle ? FLAP_IDLE_FRAME : realFrame;
@@ -220,7 +222,7 @@ export const Flap: React.FC<FlapProps> = ({ guestName, idle }) => {
 
   return (
     <AbsoluteFill>
-      {idle ? null : <FlapAudio plan={plan} />}
+      {idle || muted ? null : <FlapAudio plan={plan} />}
       {/* The board: brushed near-black, vignette, fading to alpha in the wave. */}
       <svg width={WIDTH} height={HEIGHT} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} style={{ position: "absolute", inset: 0, display: "block" }}>
         <defs>

@@ -1,8 +1,12 @@
 // FORT RIDDIM promo reel: prep the footage, build the soundtrack, render, mux.
 //
-//   bun scripts/fort-riddim/make.ts            everything
+//   bun scripts/fort-riddim/make.ts --c1 IMG_2250.MOV --c2 IMG_2253.MOV --c3 IMG_2246.MOV
+//                                              everything
 //   bun scripts/fort-riddim/make.ts --audio    stop after the soundtrack (for Studio)
 //   bun scripts/fort-riddim/make.ts --no-prep  skip the transcodes
+//
+// The three phone clips (--c1/--c2/--c3, or FORT_RIDDIM_C1/_C2/_C3) are only read
+// when a transcode under public/fort-riddim/ is missing.
 //
 // The edit itself lives in src/fort-riddim/edit.ts. Picture comes out of Remotion
 // muted and the soundtrack is muxed on here with ffmpeg, which writes a proper edit
@@ -24,12 +28,13 @@ import {
   TOTAL_FRAMES,
   nextBeat,
 } from "../../src/fort-riddim/edit";
+import { requireSource, type Source } from "./sources";
 
-const SOURCES = {
-  c1: "/Users/manuel/Desktop/IMG_2250.MOV",
-  c2: "/Users/manuel/Desktop/IMG_2253.MOV",
-  c3: "/Users/manuel/Desktop/IMG_2246.MOV",
-} as const;
+const SOURCES: Record<"c1" | "c2" | "c3", Source> = {
+  c1: { flag: "--c1", env: "FORT_RIDDIM_C1", what: "clip c1 (IMG_2250.MOV)" },
+  c2: { flag: "--c2", env: "FORT_RIDDIM_C2", what: "clip c2 (IMG_2253.MOV)" },
+  c3: { flag: "--c3", env: "FORT_RIDDIM_C3", what: "clip c3 (IMG_2246.MOV)" },
+};
 
 const PUB = "public/fort-riddim";
 const WORK = "work/fort-riddim";
@@ -107,11 +112,13 @@ async function prep() {
     ]);
   }
   const jobs: Promise<string>[] = [];
-  for (const [id, src] of Object.entries(SOURCES)) {
+  for (const [id, source] of Object.entries(SOURCES)) {
     const clean = join(PUB, `${id}.mp4`);
     const fx = join(PUB, `${id}fx.mp4`);
     const mild = join(PUB, `${id}m.mp4`);
     const wav = join(PUB, `${id}-raw.wav`);
+    if ([clean, fx, mild, wav].every((f) => existsSync(f))) continue;
+    const src = requireSource(source);
     // -g 15: short GOPs, because the speed ramps seek all over the file.
     const x264 = ["-c:v", "libx264", "-preset", "fast", "-crf", "17", "-g", "15", "-pix_fmt", "yuv420p", "-r", String(FPS), "-an"];
     if (!existsSync(clean)) jobs.push(run("ffmpeg", ["-y", "-v", "error", "-i", src, ...x264, clean]));

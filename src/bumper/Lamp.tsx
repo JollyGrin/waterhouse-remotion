@@ -119,9 +119,11 @@ const LampAudio: React.FC = () => (
 interface LampProps {
   guestName: string | null;
   idle: boolean;
+  // Skip the sound (the Track Matte's second copy).
+  muted?: boolean;
 }
 
-export const Lamp: React.FC<LampProps> = ({ guestName, idle }) => {
+export const Lamp: React.FC<LampProps> = ({ guestName, idle, muted }) => {
   const realFrame = useCurrentFrame();
   // SVG ids must be unique per instance: the strip renders many copies.
   const uid = useId().replace(/:/g, "");
@@ -177,7 +179,7 @@ export const Lamp: React.FC<LampProps> = ({ guestName, idle }) => {
 
   return (
     <AbsoluteFill style={{ opacity: fade }}>
-      {idle ? null : <LampAudio />}
+      {idle || muted ? null : <LampAudio />}
       <svg
         width={WIDTH}
         height={HEIGHT}

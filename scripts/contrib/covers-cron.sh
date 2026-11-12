@@ -1,21 +1,26 @@
 #!/bin/bash
-# Scheduled cover sync. Run by ~/Library/LaunchAgents/nl.waterhouse.covers.plist.
+# EXAMPLE launchd wrapper (macOS only) for a scheduled cover sync. It is not part
+# of the normal workflow: it is how one Mac runs `bun scripts/sync-covers.ts` on a
+# timer, kept here as a starting point. Point a LaunchAgent plist of your own
+# (e.g. ~/Library/LaunchAgents/nl.waterhouse.covers.plist) at this file.
 #
-# launchd gives a job almost no environment, so every path here is absolute and
-# PATH is set explicitly — bun, node and Remotion's browser all need to be found
-# without a login shell.
+# launchd gives a job almost no environment, so PATH is set explicitly — bun,
+# node and Remotion's browser all need to be found without a login shell. The
+# repo is found relative to this script, so it works from any clone. Set BUN to
+# override which bun is used. Notifications go through osascript.
 
 set -uo pipefail
 
-REPO="$HOME/WH stuff/waterhouse-remotion-main"
-BUN="/opt/homebrew/bin/bun"
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 LOG="$REPO/out/covers-sync.log"
 
-export PATH="/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+export PATH="$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 export HOME
+BUN="${BUN:-$(command -v bun)}"
 
 cd "$REPO" || { echo "$(date '+%F %T')  repo not found at $REPO" >>"$LOG"; exit 1; }
 mkdir -p "$REPO/out"
+[ -n "$BUN" ] || { echo "$(date '+%F %T')  bun not found on PATH (set BUN)" >>"$LOG"; exit 1; }
 
 before=$(ls out/posters/session-*.png out/posters/upcoming/*.png 2>/dev/null | wc -l | tr -d ' ')
 

@@ -131,6 +131,8 @@ const VhsAudio: React.FC = () => (
 interface VhsProps {
   guestName: string | null;
   idle: boolean;
+  // Skip the sound (the Track Matte's second copy).
+  muted?: boolean;
   // The burnt-in date, bottom right. The render script passes today.
   date: string;
 }
@@ -153,7 +155,7 @@ const Osd: React.FC<{ x: number; y: number; anchor?: "start" | "end"; children: 
   );
 };
 
-export const Vhs: React.FC<VhsProps> = ({ guestName, idle, date }) => {
+export const Vhs: React.FC<VhsProps> = ({ guestName, idle, muted, date }) => {
   const realFrame = useCurrentFrame();
   const uid = useId().replace(/:/g, "");
   const frame = idle ? VHS_IDLE_FRAME : realFrame;
@@ -240,7 +242,7 @@ export const Vhs: React.FC<VhsProps> = ({ guestName, idle, date }) => {
 
   return (
     <AbsoluteFill>
-      {idle ? null : <VhsAudio />}
+      {idle || muted ? null : <VhsAudio />}
       <svg width={WIDTH} height={HEIGHT} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} style={{ position: "absolute", inset: 0, display: "block" }}>
         <defs>
           {/* The picture, defined once; every row <use>s it. The chroma
