@@ -81,9 +81,11 @@ describe("public/ident assets", () => {
     .filter((f) => /\.tsx?$/.test(f))
     .map((f) => readFileSync(f, "utf8"))
     .join("\n");
-  // Idents.tsx builds the FuseLines paths from the pressing: mix-${semitones}.wav.
   const referenced = new Set(code.match(/ident\/[A-Za-z0-9_./-]+\.(wav|png|jpg)/g) ?? []);
+  // Paths built at runtime: Idents.tsx's FuseLines pressings (mix-${semitones}.wav)
+  // and Louvre's three fin cascades (cascade${j + 1}.wav).
   for (const s of [4, 7, 12]) referenced.add(`ident/audio/fuselines/mix-${s}.wav`);
+  for (const j of [1, 2, 3]) referenced.add(`ident/audio/louvre/cascade${j}.wav`);
 
   it("has every file the idents reference", () => {
     for (const r of referenced) expect(statSync(join("public", r)).isFile()).toBe(true);
