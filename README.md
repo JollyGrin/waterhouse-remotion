@@ -15,7 +15,7 @@ This repo is **public** and `main` is what everyone else builds on, so:
 
 1. **Always work on a branch.** Never commit or push to `main`.
 2. **Push your branch early and often**, so your work is always on GitHub
-   and anyone can pick it up.
+   and anyone can pick it up. Your AI agent does this for you as it goes.
 3. **Want it in `main`? Open a pull request** into `main`. Only
    **JollyGrin** (Dean) merges.
 4. **Then message Dean on WhatsApp** with the PR link. Otherwise just keep
@@ -26,6 +26,9 @@ This repo is **public** and `main` is what everyone else builds on, so:
 The commands for 1–4 are in
 [GETTING-STARTED.md, "Sharing your work"](GETTING-STARTED.md#6-sharing-your-work).
 Agents get the same rules from [AGENTS.md](AGENTS.md) (`CLAUDE.md` imports it).
+
+Every template (Fuse, the door stinger, PullUp, ...) is listed by the name
+people use for it in [TEMPLATES.md](TEMPLATES.md).
 
 ## Two tools in this repo
 
@@ -563,7 +566,7 @@ src/session/plan.ts         calendar slot, guest lookup, running order
 src/WeeklyLineup.tsx        lineup story
 src/bumper/                 SessionBumper: Door/Corner/Lamp/Paper/Neon/Vhs/Fader/Flap.tsx, Logo.tsx, logo-sample.ts, flap-plan.ts, fx.ts (tests)
 src/audience/schema.ts      zod props schemas: the contract between data and video
-src/audience/metrics.ts     every definition above, with tests (bun test)
+src/audience/metrics.ts     every definition above, with tests (bun run test)
 src/audience/fixtures/      real-data examples the compositions preview with
 scripts/fetch-audience.ts   live data -> props JSON
 scripts/render-*.ts         one per video
@@ -578,7 +581,7 @@ Preview any composition in the Remotion studio with `bun run dev`.
 - **A number looks wrong.** Run `bun run fetch:audience ...` and read the
   JSON before touching the video. The thresholds (30 days, 90 days, one
   third, 30 minutes) are named constants at the top of
-  `src/audience/metrics.ts`, and `bun test` covers each rule.
+  `src/audience/metrics.ts`, and `bun run test` covers each rule.
 - **Copy or layout.** Edit the composition file. Beat frame ranges are
   constants at the top of each.
 - **Sound.** `public/audio/recap/README.md` explains each file and the level

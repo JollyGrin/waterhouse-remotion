@@ -5,6 +5,8 @@ for every coding agent. Claude Code imports it here:
 
 @AGENTS.md
 
-Before anything else: you must be on a branch that is not `main`, push it
-often, and open a pull request to get into `main` (only JollyGrin merges).
-The full rules are at the top of AGENTS.md.
+Before anything else: work on a branch that is not `main`, save and push it
+as you go without being asked, talk in plain words (no git jargon), and open
+a pull request to get into `main` (only JollyGrin merges). Templates have
+names people can say; the list is TEMPLATES.md. The full rules are at the
+top of AGENTS.md.
