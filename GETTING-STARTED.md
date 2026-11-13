@@ -104,9 +104,10 @@ cd ~/git/waterhouse-video
 claude
 ```
 
-Now type what you want. Claude checks what's installed, gets everyone's
-latest work, and sets up your own copy (or carries on with the one from
-last time) before it changes anything.
+Now type what you want. Before every request Claude gets everyone's latest
+work from GitHub, checks what's installed, and sets up your own copy (or
+carries on with the one from last time). You don't need to update anything
+yourself.
 
 ---
 
