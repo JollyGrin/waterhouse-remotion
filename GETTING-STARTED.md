@@ -10,13 +10,13 @@ Cursor, Gemini CLI and the others work too: they all read
 [AGENTS.md](AGENTS.md) on their own, so the same requests work. Where this
 guide says "Claude", read "your agent".
 
-> **The four rules** (details and commands in
-> [Sharing your work](#6-sharing-your-work)):
->
-> 1. Always work on a **branch**, never on `main`.
-> 2. **Push** your branch early and often, so your work is on GitHub.
-> 3. Want it in `main`? Open a **pull request**. Only Dean (JollyGrin) merges.
-> 4. Then **WhatsApp Dean** the link. Otherwise keep working on your branch.
+> **How your work is kept safe** (more in
+> [Sharing your work](#6-sharing-your-work)): Claude works in **your own
+> copy** of the repo (a *branch*), never in the shared version (`main`).
+> It **saves and backs up your work online** as it goes, without you
+> asking. When something is ready, say *"send it to Dean for review"*:
+> Claude opens a *pull request* and gives you a link. **WhatsApp Dean the
+> link**; only he adds things to the shared version.
 
 There are two tools in here, and Claude chooses between them for you:
 
@@ -101,14 +101,12 @@ mkdir -p ~/Movies/waterhouse/in ~/Movies/waterhouse/out
 
 ```sh
 cd ~/git/waterhouse-video
-git switch main && git pull             # get everyone's latest work
-git switch -c yourname/what-you-are-doing   # your own branch, e.g. sam/neon-stinger-shorter
 claude
 ```
 
-Now type what you want. If you're continuing on a branch from last time,
-`git switch yourname/what-you-are-doing` instead of making a new one. Not
-sure which branch you're on? `git branch --show-current` (or ask Claude).
+Now type what you want. Claude checks what's installed, gets everyone's
+latest work, and sets up your own copy (or carries on with the one from
+last time) before it changes anything.
 
 ---
 
@@ -155,12 +153,16 @@ Claude asks if something is missing (which artist, which date, which file).
 | **"The caption says 'Waterhose', fix it"** | Re-renders with that word replaced everywhere. Uses the cached transcript, so it's fast. | same file, overwritten (or a `v2` if you ask) |
 | **"Cut 20:03 to 20:29 out, that's us talking to the camera guy"** | Adds a manual cut (times from the original file) and re-renders. | same as above |
 | **"Make the 1080p version"** | Quick version on a laptop (minutes, a bit soft). The proper AI upscale runs on the GPU box and takes hours. Then the captions and intro are drawn again at 1080p so the text stays sharp. | `~/Movies/waterhouse/out/<name>.edited.1080p.mp4` |
+| **"Make a new stinger: a cassette tape rewinding into the logo"** | Claude builds it in the house style, gives it a one-word name (say, *Rewind*), adds it to [TEMPLATES.md](TEMPLATES.md) and tells you the name. Share the name in WhatsApp so others can ask for "the Rewind stinger". | `out/Bumper-rewind.webm` once rendered |
 | **"Make a 9:16 reel from the best 30 seconds of the Boogie interview"** | Claude reads the transcript, proposes a 30-second span, and renders a vertical reel that cuts between the speakers with big captions and an end card. See the note below. | `out/reels/<slug>.mp4` |
 
 **About reels:** the reel animation works, but the step that feeds it an
 edited interview's captions isn't built yet. Claude can still do it by hand
 (convert sesh-edit's word timings), but expect some back-and-forth, or ask
 Dean.
+
+Every template has a name you can say: *Fuse*, *door*, *PullUp*, ... The
+full list is [TEMPLATES.md](TEMPLATES.md).
 
 You can also just ask questions: *"what can this repo make?"*, *"which
 stinger is the shortest?"*, *"what did the edit cut at 12 minutes?"*
@@ -224,7 +226,8 @@ Then *"render it"*.
 | **`ffmpeg: command not found`** | ffmpeg isn't installed. | `brew install ffmpeg`, or *"install ffmpeg for me"*. |
 | A render or upscale is **very slow**, the laptop is hot | Long encodes and the AI upscale are GPU work. | *"Run this on the GPU box instead"*. For a quick look on the laptop: *"use the lanczos upscale"*. |
 | **Claude picked the wrong tool** (e.g. tries to edit an interview with Remotion, or uses npm) | It didn't read the routing table. | *"Read AGENTS.md and use the right tool"*. Editing recordings is always sesh-edit in `longform/`. Animations are always Remotion with `bun`. |
-| Claude wants to **commit to `main`**, or `git push` says **rejected** / **permission denied** | You're on the wrong branch, or you don't have write access to the repo yet. | *"Make a branch for this first"*. If pushing your own branch is refused, ask Dean to add you as a collaborator on GitHub. |
+| Claude says it **couldn't back up online** (push refused, permission denied) | You haven't been added to the repo on GitHub yet, or the GitHub login expired. | Ask Dean to add you to the repo. If Claude says you're logged out, run `gh auth login` in Terminal. Your work is still saved on your laptop meanwhile. |
+| Claude wants to change the **shared version** (`main`) directly | It skipped its rules. | *"Work in my own copy, not main"*. |
 
 Anything else: paste the error to Claude and ask *"what went wrong?"*. It's
 fine to say *"start over"*.
@@ -243,28 +246,22 @@ work on your own copy, called a *branch*, push it to GitHub as you go, and
 when you want your changes in `main` you ask for a *pull request* (PR) to be
 merged. Nobody can break anyone else's work this way.
 
-### The four rules
+### What Claude does for you
 
-1. **Always work on a branch. Never commit or push to `main`.**
-2. **Push your branch early and often.** A branch that only exists on your
-   laptop helps nobody; one on GitHub can be picked up by anyone, and
-   survives your laptop.
-3. **Want it in `main`? Open a pull request into `main`.** Only Dean
-   (JollyGrin on GitHub) merges.
-4. **Then message Dean on WhatsApp** with the PR link, so he knows it's
-   waiting. If you don't need it in `main` yet, just keep working on your
-   branch.
+1. **Works in your own copy (branch)**, never the shared version (`main`).
+2. **Saves and backs up online** after every change that works, without you
+   asking. You'll see a line like *"Saved and backed up online."* Your copy
+   is on GitHub, so it survives your laptop and others can pick it up.
+3. **When it's ready**, say *"send it to Dean for review"* (Claude may also
+   offer). It opens a *pull request* and gives you the link.
+4. **You WhatsApp Dean the link.** He reviews it and adds it to the shared
+   version. If you don't need it shared yet, just keep working.
 
-### The easy way: ask Claude
+Words you'll hear: *branch* = your own copy, *push* = back up online,
+*pull request (PR)* = sent to Dean for review, *merge* = Dean added it to
+the shared version.
 
-> *"Save my changes and open a pull request"*
-
-Claude makes a branch if you're not on one, commits only the code changes
-(never media), pushes it, opens the PR on GitHub and prints the link. Then
-WhatsApp Dean the link. While you keep working, *"push my changes"* now and
-then keeps GitHub up to date.
-
-If Claude ever offers to commit, push or merge to `main`: say no.
+If Claude ever wants to change or merge into `main` itself: say no.
 
 ### The same thing by hand
 
@@ -277,7 +274,7 @@ git switch -c sam/neon-stinger-shorter
 
 # 2. Save and push, as often as you like
 git status                              # look: nothing ending in .mp4 .mov .wav .jpg .png you didn't expect
-git add -A
+git add src/bumper/Neon.tsx             # name the files you changed; never `git add -A`
 git commit -m "neon stinger: shorter hold"
 git push -u origin HEAD                 # the first time; after that just: git push
 

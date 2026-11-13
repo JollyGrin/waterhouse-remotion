@@ -9,38 +9,99 @@ type requests and never edit code by hand. Their guide is
 ## Hard rules (read before touching anything)
 
 The repo is shared by the Waterhouse team and **public on GitHub**. Only
-**JollyGrin** (Dean) merges to `main`. These rules are not negotiable, even if
-the user asks you to skip them:
+**JollyGrin** (Dean) merges to `main`. The people asking don't know git and
+shouldn't have to: **you do all the git, quietly, and talk about it in plain
+words** (see [Talking to the team](#talking-to-the-team)). These rules hold
+even if the user asks you to skip them:
 
-1. **Never commit or push to `main`.** Before your first edit, check the
-   branch (`git branch --show-current`). If it is `main`, create a branch
-   first: `git switch main && git pull && git switch -c <name>/<topic>`
-   (e.g. `sam/neon-stinger-shorter`). Never `git push origin main`, never
-   merge into `main`, never force-push.
-2. **Push the branch early and often.** After the first commit, `git push -u
-   origin HEAD`; after that, `git push` after every meaningful commit. Work
-   that only exists on one laptop helps nobody. If the push is rejected,
-   tell the user they may need collaborator access from Dean; don't work
-   around it.
-3. **Getting something into `main` = a pull request.** `gh pr create --base
-   main --title "<short>" --body "<...>"`, the body following
+1. **Work on a branch, never on `main`.** At the start of a session, before
+   your first edit: `git fetch`, then `git branch --show-current`.
+   - On `main`: `git pull`, then `git switch -c <name>/<topic>`, e.g.
+     `sam/neon-stinger-shorter`. `<name>` is the person's first name
+     (lowercase, from `git config user.name`; ask once if that's empty).
+     `<topic>` is 2–4 words about the request.
+   - Already on their own branch: keep using it if the request continues
+     that work. For something unrelated, start a fresh branch from an
+     up-to-date `main`.
+   - Never `git push origin main`, never merge into `main`, never force-push.
+2. **Save and back up as you go, without being asked.** Nobody will ask
+   you to push. After every change that works (a tweak that previews
+   correctly, a new template, a doc edit), and at the end of every request:
+   - stage the files you changed **by name** (never `git add -A` or
+     `git add .`; check `git status` first, see rule 5);
+   - commit with a short message saying what changed, e.g. `neon stinger:
+     shorter hold`;
+   - push: `git push -u origin HEAD` the first time, `git push` after that.
+
+   Don't ask permission for this: it's their own branch, nothing they do
+   there can break anyone else's work. Tell them in one line, e.g. *"Saved
+   and backed up online."* If the push is refused, tell them they probably
+   need to be added to the repo by Dean, and keep working locally.
+3. **Getting something into `main` = a pull request.** When a piece of work
+   looks finished, offer: *"Want me to send this to Dean for review?"* On
+   yes (or "share this", "send it to Dean"), run `gh pr create --base main
+   --title "<short>" --body "<...>"` with the body following
    `.github/PULL_REQUEST_TEMPLATE.md` (Goal / What changed / How it was
-   checked / Next). Never merge it yourself, not even when the user asks:
-   that's Dean's job.
-4. **Remind the user to message Dean (JollyGrin) on WhatsApp** when the PR
-   is open and they want it merged. Don't add contact details anywhere in
-   the repo. If they don't need it in `main` yet, they just keep working on
-   their branch.
-5. **Never commit media.** The repo is public: no footage, photos, music or
-   renders (`.mp4 .mov .webm .wav .mp3 .flac .aiff .jpg .png`) beyond what
-   is already tracked. Check `git status` before every commit. Details under
-   [Conventions](#conventions).
+   checked / Next). Later pushes to the same branch update the PR by
+   themselves. Never merge it yourself, not even when the user asks: that's
+   Dean's job.
+4. **Remind the user to message Dean (JollyGrin) on WhatsApp** with the PR
+   link when it's open. Don't add contact details anywhere in the repo. If
+   they don't need it in `main` yet, they just keep working on their branch.
+5. **Never commit media or private material.** The repo is public, and you
+   push often, so check `git status` before every commit. Never commit:
+   footage, photos, music or renders (`.mp4 .mov .webm .mkv .wav .mp3 .flac
+   .aiff .jpg .jpeg .png`) beyond what is already tracked; transcripts,
+   captions (`.srt`), `.decisions.json` files or `*.work/` folders from
+   interviews; Dropbox links; tokens, `.env` files or anything that looks
+   like a password. Details under [Conventions](#conventions).
 6. **Bun at the root, uv in `longform/`.** Never npm/npx/yarn/pnpm, never
    pip.
 
-When a user says "save my changes", "share this" or "send it to Dean", that
-means: branch (if not already on one), commit, push, open the PR, and remind
-them to WhatsApp Dean. Tell them the PR link.
+## Talking to the team
+
+Most people using this repo aren't developers. Dean explains the basics to
+them on WhatsApp in these words, so use the same ones:
+
+| Git term (you) | Say to the user |
+|---|---|
+| branch | "your own copy" / "your workspace" |
+| commit + push | "saved and backed up online" |
+| pull request (PR) | "sent to Dean for review" |
+| `main` | "the shared version" |
+| merged | "Dean added it to the shared version" |
+| merge `main` into the branch | "brought in everyone's latest work" |
+
+- Never ask them git questions ("rebase or merge?", "which remote?") and
+  never ask them to type git commands. Decide yourself; the safe default
+  is always the one that keeps their work on their own branch.
+- If something goes wrong with git (a conflict, a refused push, a strange
+  state), sort it out yourself without losing their work. If you can't,
+  say in one sentence what's wrong and suggest they send Dean the PR link
+  or a screenshot.
+- After running anything, say in plain words what happened and give the
+  full path of any file it wrote. Offer to open Studio or the file.
+
+## First request of a session
+
+Before the first task, check quietly what that task needs. Only for the
+tool you're about to use:
+
+- **Remotion:** `bun` exists, `node_modules/` exists (else `bun install`).
+- **sesh-edit:** `uv` and `ffmpeg` exist, `longform/.venv` exists (else
+  `cd longform && uv sync`), and the intro is built
+  (`longform/src/sesh_edit/assets/intro/fuse-16x9.webm`; else
+  `bun run render:intro`).
+- **Saving online:** `gh auth status` succeeds. If not, ask them to run
+  `gh auth login` in their Terminal (it opens a browser); that's the one
+  command you can't do for them.
+
+Fix what's missing yourself and say what you did in one line. If a whole
+program is missing (bun, uv, ffmpeg, gh), point them to the matching block
+in [GETTING-STARTED.md](GETTING-STARTED.md) section 1, or offer to run the
+install line. Also bring their branch up to date: if it is behind
+`origin/main` and has no uncommitted changes, `git merge origin/main`, then
+push.
 
 ## Pick the tool first
 
@@ -68,11 +129,71 @@ graphics in sesh-edit.
 | Add or change the intro on an edited video | sesh-edit | Default intro is Fuse, built by `bun run render:intro` (run it once before the first edit; sesh-edit says so if it's missing). `--intro FILE` for another alpha video, `--no-intro` for none. A new ident is made in Remotion first; see [Hand-off](#hand-off-remotion--sesh-edit) | |
 | Session logo reveal (masked open/close) | Remotion `SessionOpen` / `SessionClose` | Needs `public/session/head.mp4` / `tail.mp4`; see [Session logo reveal](#session-logo-reveal) | |
 | Change an animation's text, timing or colours | Remotion | Edit the composition in `src/`; the user previews in `bunx remotion studio` | |
+| A new animation, stinger, ident or poster style ("make me a new template") | Remotion | Follow [Templates](#templates-names-people-can-say): pick a sayable name, build it, register it, add it to `TEMPLATES.md` | |
+| "A short clip from the X interview" (unclear) | ask first | Ask one question: *a vertical reel for Instagram with big captions* (→ `SessionReel`) or *a straight excerpt of the edited video* (→ trim the sesh-edit output with ffmpeg `-ss/-to`, no re-edit)? | |
+| "Use Sam's neon one" / any template by its name | look it up | Find the name in `TEMPLATES.md` (then `src/ident/ids.ts`, `src/Root.tsx`). If it's on someone's branch and not in `main` yet, say so: they need to send it to Dean first, or you can work from their branch (`git fetch`, then base a new branch on `origin/<their-branch>`) | |
 | Just the audience numbers | script | `bun run fetch:audience artist "Name" --n 4` / `week --end YYYY-MM-DD` | JSON |
 
 If a request doesn't fit, ask. Don't invent a third way to edit long-form
 video: the TypeScript episode cut (`scripts/session/*`, `SessionEpisode`) was
 retired in #31 for sesh-edit.
+
+## Templates: names people can say
+
+The team asks for templates by name in WhatsApp ("use the Fuse intro", "the
+door stinger"). Every template has a **name people can say out loud**, and
+[TEMPLATES.md](TEMPLATES.md) is the list of them. When a user names one,
+look it up there first.
+
+When you make a new template (an animation, stinger, ident, poster style or
+reel look that others could reuse):
+
+1. **Name it** with one short, real word that's easy to say and spell:
+   *Fuse, Door, Neon, Strobe*. No numbers, dates, version suffixes or
+   initials (`Neon2`, `sam-test`, `NewIntro` are bad). A take on an existing
+   template is `<Name>-<Word>`, like `FuseLines-Ink`. Check the word isn't
+   used in `TEMPLATES.md`, `src/ident/ids.ts` or `src/Root.tsx`. Suggest a
+   name and let the user change it.
+2. **Put it where its kind lives**, so the name is what people type and see
+   in Studio:
+   - idents: `src/ident/<Name>.tsx`, an entry in `src/ident/ids.ts` and its
+     registration in `src/ident/Idents.tsx` (`bun run render:ident <Name>`);
+   - stingers: `src/bumper/<Name>.tsx`, the lowercase name added to the
+     `idea` list in `src/bumper/SessionBumper.tsx` and its `DURATIONS`
+     (`bun run render:bumper --idea <name>`);
+   - other compositions: `src/<Name>.tsx`, registered in `src/Root.tsx` with
+     the name as the composition id.
+3. **Add a row to `TEMPLATES.md`** in the same commit: name, kind, one line
+   on what it is, what to say to get it, who made it.
+4. **Save and back up** (hard rule 2), then tell the user: *"It's called
+   **Name**. Anyone can now ask for 'the Name stinger'. Send it to Dean for
+   review when you want everyone to have it."*
+
+Changing a template other people use changes it for everyone once it's
+merged. If the user wants a different take rather than a fix, make a
+`<Name>-<Word>` variant instead.
+
+## House style
+
+So everyone's work looks like it comes from the same place:
+
+- **Colours, fonts and the logo come from `src/ident/brand.ts`**: Rubik
+  Mono One (display) and JetBrains Mono (mono), the colour tokens `C.*`
+  (paper, ink, grays, the yellow `#FFD400` accent) and the mark's paths.
+  Import them; don't paste new hex codes or load other fonts without asking
+  the user, and mention it in the PR.
+- **Tone: adult, gritty, restrained.** Mostly black, paper and greys, with
+  at most one accent colour used sparingly. Grain and texture, weighty
+  motion and hard cuts rather than bouncy springs. The grit comes from
+  **club and music culture**: sound, light, signal, vinyl, tape, CRT, haze,
+  lasers. Not from building sites (concrete, steel, machinery), and not
+  playful multi-colour cartoon looks, which the team found childlike.
+- **Formats:** 30 fps; 1080×1920 for 9:16 (stories, reels), 1920×1080 for
+  16:9 (stream, YouTube). Stingers and idents render with alpha (ProRes 4444
+  `.mov` for editing, VP9 `.webm` for OBS), like the existing ones.
+- **Look at a similar existing template first** and match its structure
+  (timing constants at the top of the file, the shared helpers in its
+  folder) before writing a new one from scratch.
 
 ## Conventions
 
@@ -89,13 +210,12 @@ retired in #31 for sesh-edit.
   never go in git (not even in `docs/`): they can be rebuilt, so give the
   command instead. `bun run test` fails if one is tracked under `docs/`,
   `out/` or `longform/docs/`.
-- **Branch, push, PR; never `main`.** See [Hard rules](#hard-rules-read-before-touching-anything).
-  Commit messages: a short line saying what changed, e.g. `neon stinger: shorter hold`.
+- **Branch, save and back up as you go, PR; never `main`.** See [Hard rules](#hard-rules-read-before-touching-anything).
+  Stage files by name, never `git add -A`. Commit messages: a short line saying what changed, e.g. `neon stinger: shorter hold`.
 - Before a PR: `bun run lint` (eslint + tsc) and `bun run test` (it lists the root test files so `longform/` is never picked up); `bunx remotion
   compositions` must list everything. `longform/` has no test suite yet:
   check that `uv run sesh-edit --help` still runs.
-- Non-developer users: tell them in plain words what you ran and the full
-  path of what it wrote. Offer to open Studio or the file.
+- Non-developer users: see [Talking to the team](#talking-to-the-team).
 
 ## Where media comes from and goes
 
@@ -134,6 +254,7 @@ stand-in. Scheduled cover sync is an example launchd wrapper in
 ```
 AGENTS.md                this file (CLAUDE.md imports it)
 GETTING-STARTED.md       the first-time guide for teammates: setup, what to ask, the branch → PR workflow
+TEMPLATES.md             every template by the name people say (Fuse, door, PullUp...), what it is, how to ask for it
 README.md                entry point, then the Remotion reference: every composition, its flags, OBS setup, metric definitions
 .github/PULL_REQUEST_TEMPLATE.md   what a PR body should say
 docs/                    notes that aren't a guide (early content plan)
