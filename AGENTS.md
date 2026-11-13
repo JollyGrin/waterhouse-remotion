@@ -14,15 +14,32 @@ shouldn't have to: **you do all the git, quietly, and talk about it in plain
 words** (see [Talking to the team](#talking-to-the-team)). These rules hold
 even if the user asks you to skip them:
 
-1. **Work on a branch, never on `main`.** At the start of a session, before
-   your first edit: `git fetch`, then `git branch --show-current`.
-   - On `main`: `git pull`, then `git switch -c <name>/<topic>`, e.g.
-     `sam/neon-stinger-shorter`. `<name>` is the person's first name
-     (lowercase, from `git config user.name`; ask once if that's empty).
-     `<topic>` is 2–4 words about the request.
-   - Already on their own branch: keep using it if the request continues
-     that work. For something unrelated, start a fresh branch from an
-     up-to-date `main`.
+1. **Get the latest, then work on a branch, never on `main`.** Others'
+   work lands in `main` all the time, so do this at the start of **every
+   request** (not just the first one in a session), before you read code
+   or edit anything:
+   - `git fetch origin`, then `git branch --show-current`.
+   - **On `main`:** `git pull --ff-only`, then `git switch -c
+     <name>/<topic>`, e.g. `sam/neon-stinger-shorter`. `<name>` is the
+     person's first name (lowercase, from `git config user.name`; ask once
+     if that's empty). `<topic>` is 2–4 words about the request.
+   - **On their own branch:** keep using it if the request continues that
+     work; for something unrelated, start a fresh branch from the updated
+     `main` instead. Then:
+     - unsaved changes? Save them first (rule 2);
+     - their branch is newer online (they worked on another computer):
+       `git pull --ff-only`;
+     - `main` has work the branch doesn't (`git rev-list --count
+       HEAD..origin/main` is more than 0): `git merge origin/main`, then
+       `git push`. If it conflicts, resolve it keeping both sides' intent;
+       if you're unsure what either side meant, `git merge --abort`, carry
+       on without the update, and tell the user in one plain sentence.
+   - **After updating:** if `package.json` or `bun.lock` changed, `bun
+     install`; if `longform/uv.lock` changed, `cd longform && uv sync`; if
+     `src/ident/Fuse.tsx` or `scripts/render-intro.ts` changed and they use
+     sesh-edit, `bun run render:intro`.
+   - Tell them in one line only if something came in, e.g. *"Got
+     everyone's latest work first."*
    - Never `git push origin main`, never merge into `main`, never force-push.
 2. **Save and back up as you go, without being asked.** Nobody will ask
    you to push. After every change that works (a tweak that previews
@@ -99,9 +116,8 @@ tool you're about to use:
 Fix what's missing yourself and say what you did in one line. If a whole
 program is missing (bun, uv, ffmpeg, gh), point them to the matching block
 in [GETTING-STARTED.md](GETTING-STARTED.md) section 1, or offer to run the
-install line. Also bring their branch up to date: if it is behind
-`origin/main` and has no uncommitted changes, `git merge origin/main`, then
-push.
+install line. Then get the latest work and set up their branch (hard
+rule 1), as you do before every request.
 
 ## Pick the tool first
 
